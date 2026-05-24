@@ -5,8 +5,14 @@
       <div class="container">
         <div class="row align-items-center">
           <div class="col-md-8">
-            <p class="text-orange fw-bold mb-1 small text-uppercase">Food Delivery Orchestration Active</p>
-            <h2 class="fw-bold mb-0">Coordinate the party. <span class="text-orange">Not the chaos.</span></h2>
+            <p class="text-orange fw-bold mb-1 small text-uppercase">
+              Food Delivery Orchestration Active
+              <span v-if="occasion" class="ms-2 badge bg-light text-dark border">{{ occasion }}</span>
+            </p>
+            <h2 class="fw-bold mb-0">
+              {{ hostName ? hostName + "'s Party" : 'Coordinate the party.' }}
+              <span class="text-orange">Not the chaos.</span>
+            </h2>
           </div>
           <div class="col-md-4 text-md-end mt-3 mt-md-0">
             <div class="glass-card py-2 px-3 d-inline-block bg-light border">
@@ -37,12 +43,8 @@
           <div class="glass-card mb-4">
             <h5 class="fw-bold mb-4">How should we coordinate this party?</h5>
             <div class="row g-3">
-              <!-- Member-wise -->
               <div class="col-md-6">
-                <div
-                  class="strategy-card p-3 h-100"
-                  :class="{ selected: strategy === 'member' }"
-                  @click="strategy = 'member'">
+                <div class="strategy-card p-3 h-100" :class="{ selected: strategy === 'member' }" @click="strategy = 'member'">
                   <div class="d-flex justify-content-between align-items-start mb-2">
                     <h6 class="fw-bold mb-0">
                       <i class="bi bi-people-fill me-2" :class="strategy === 'member' ? 'text-orange' : 'text-muted'"></i>
@@ -57,13 +59,8 @@
                   </div>
                 </div>
               </div>
-
-              <!-- Whole Party -->
               <div class="col-md-6">
-                <div
-                  class="strategy-card p-3 h-100"
-                  :class="{ selected: strategy === 'whole' }"
-                  @click="strategy = 'whole'">
+                <div class="strategy-card p-3 h-100" :class="{ selected: strategy === 'whole' }" @click="strategy = 'whole'">
                   <div class="d-flex justify-content-between align-items-start mb-2">
                     <h6 class="fw-bold mb-0">
                       <i class="bi bi-pie-chart-fill me-2" :class="strategy === 'whole' ? 'text-orange' : 'text-muted'"></i>
@@ -79,8 +76,6 @@
                 </div>
               </div>
             </div>
-
-            <!-- Whole Party Guest Count -->
             <div v-if="strategy === 'whole'" class="mt-4 pt-3 border-top">
               <div class="d-flex justify-content-between align-items-center">
                 <span class="fw-semibold">Total Number of Guests</span>
@@ -113,37 +108,25 @@
                   <i class="bi bi-geo-alt"></i> Use Current Location
                 </button>
               </div>
-              <div class="col-md-5 h-100">
-                <div class="ai-map-card p-3 text-center">
-                  <div class="ai-map-scanner"></div>
-                  <i class="bi bi-map text-white-50 fs-1 mb-2 d-block"></i>
-                  <span class="small text-white-50">AI Location Synced</span>
-                </div>
-              </div>
+              
             </div>
           </div>
 
-          <!-- Host / Shared Preferences -->
+          <!-- Host / Shared Preferences + Order -->
           <div class="glass-card mb-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
-              <h5 class="fw-bold mb-0">{{ strategy === 'member' ? 'Host Preferences' : 'Shared Party Preferences' }}</h5>
-              <select v-model="hostPref" class="form-select form-select-sm w-auto">
-                <option>Any Preference</option>
-                <option>Pure Veg</option>
-                <option>Non-Veg</option>
-                <option>Jain</option>
-                <option>Vegan</option>
-              </select>
+              <h5 class="fw-bold mb-0">{{ strategy === 'member' ? 'Host Order' : 'Shared Party Order' }}</h5>
+              <span class="badge bg-light text-dark border">
+                <i class="bi bi-person-fill text-orange me-1"></i>{{ hostName || 'Host' }}
+              </span>
             </div>
-
-            <!-- Food Category Cards -->
             <div class="row flex-nowrap overflow-auto pb-2" style="scrollbar-width: thin;">
               <div class="col-5 col-md-4 col-lg-3" v-for="cat in foodCategories" :key="cat.name">
                 <div class="card h-100 border-0 shadow-sm text-center p-2 hover-lift">
                   <div class="fs-1 mb-2">{{ cat.emoji }}</div>
                   <h6 class="mb-1 fw-bold">{{ cat.name }}</h6>
                   <span class="small text-muted d-block mb-2">★ {{ cat.rating }} | {{ cat.time }}m</span>
-                  <button class="btn btn-sm btn-outline-orange w-100" @click="startOrderFlow('host', 'Host')">
+                  <button class="btn btn-sm btn-outline-orange w-100" @click="startOrderFlow('host', hostName || 'Host', 'Any', false, 0, cat.name)">
                     Order Now
                   </button>
                 </div>
@@ -151,7 +134,7 @@
             </div>
           </div>
 
-          <!-- Member Management (only for member strategy) -->
+          <!-- Member Management (member strategy only) -->
           <div v-if="strategy === 'member'" class="glass-card mb-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
               <h5 class="fw-bold mb-0">Who's joining the party?</h5>
@@ -161,10 +144,7 @@
             </div>
 
             <div class="d-flex flex-column gap-3">
-              <div
-                v-for="member in members"
-                :key="member.id"
-                class="border rounded p-3 bg-white hover-lift">
+              <div v-for="member in members" :key="member.id" class="border rounded p-3 bg-white hover-lift">
                 <div class="d-flex justify-content-between align-items-start mb-3">
                   <div class="d-flex align-items-center gap-2">
                     <div class="bg-light rounded-circle d-flex align-items-center justify-content-center fw-bold text-orange"
@@ -172,22 +152,35 @@
                       {{ member.name.charAt(0) }}
                     </div>
                     <div>
-                      <h6 class="fw-bold mb-0">{{ member.name }}</h6>
+                      <h6 class="fw-bold mb-0">
+                        {{ member.name }}
+                        <span v-if="member.isHost" class="badge bg-orange ms-1" style="font-size:0.65rem;">Host</span>
+                      </h6>
                       <span class="small text-muted">
                         <span v-if="hasOrdered(member.name)">
                           <i class="bi bi-check-circle-fill text-success"></i> Ordered
+                        </span>
+                        <span v-else-if="member.late && getScheduledOrder(member.name)" class="text-warning">
+                          <i class="bi bi-clock-history"></i>
+                          Fires at {{ getScheduledOrder(member.name).fire_at }}
+                          <span class="text-muted ms-1 fst-italic" style="font-size:0.7rem;">
+                            ({{ getScheduledOrder(member.name).reasoning }})
+                          </span>
                         </span>
                         <span v-else>Waiting to order</span>
                       </span>
                     </div>
                   </div>
-                  <button class="btn btn-sm btn-light text-danger border-0" @click="removeMember(member.id)">
+                  <button
+                    v-if="!member.isHost"
+                    class="btn btn-sm btn-light text-danger border-0"
+                    @click="removeMember(member.id)">
                     <i class="bi bi-trash"></i>
                   </button>
                 </div>
 
                 <div class="row g-2 align-items-center">
-                  <div class="col-5">
+                  <div class="col-4">
                     <select v-model="member.pref" class="form-select form-select-sm">
                       <option>Any</option>
                       <option>Veg</option>
@@ -197,16 +190,29 @@
                       <option>Diabetic</option>
                     </select>
                   </div>
-                  <div class="col-7 d-flex justify-content-end align-items-center gap-3">
+                  <!-- Late arrival toggle + minutes -->
+                  <div class="col-5 d-flex align-items-center gap-2">
                     <div class="form-check form-switch m-0">
                       <input class="form-check-input" type="checkbox" v-model="member.late" :id="'late-' + member.id" />
                       <label class="form-check-label small" :for="'late-' + member.id">Late</label>
                     </div>
+                    <div v-if="member.late" class="d-flex align-items-center gap-1">
+                      <input
+                        type="number"
+                        v-model.number="member.lateMinutes"
+                        class="form-control form-control-sm"
+                        style="width:54px;"
+                        min="5" max="120" placeholder="30"
+                      />
+                      <span class="small text-muted">min</span>
+                    </div>
+                  </div>
+                  <div class="col-3 d-flex justify-content-end">
                     <button
                       class="btn btn-sm"
                       :class="hasOrdered(member.name) ? 'btn-outline-success' : 'btn-outline-orange'"
-                      @click="startOrderFlow(member.id, member.name)">
-                      {{ hasOrdered(member.name) ? 'Edit Order' : 'Order' }}
+                      @click="startOrderFlow(member.id, member.name, member.pref, member.late, member.lateMinutes)">
+                      {{ hasOrdered(member.name) ? 'Edit' : 'Order' }}
                     </button>
                   </div>
                 </div>
@@ -221,7 +227,6 @@
           <div class="glass-card sticky-summary">
             <h5 class="fw-bold mb-4 border-bottom pb-2">Order Summary</h5>
 
-            <!-- Orders List -->
             <div class="mb-3 small">
               <div v-if="orders.length === 0" class="text-muted text-center py-3">
                 No orders placed yet. Start orchestrating!
@@ -230,11 +235,16 @@
                 <div class="d-flex justify-content-between align-items-center mb-1">
                   <span class="fw-bold text-dark">
                     <i class="bi bi-person-fill text-muted"></i> {{ order.who }}
+                    <span v-if="order.isLate" class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;">
+                      <i class="bi bi-clock"></i> Late
+                    </span>
                   </span>
                   <span class="fw-bold">₹{{ order.itemTotal }}</span>
                 </div>
                 <div class="text-muted" style="font-size:0.75rem;">
-                  <i class="bi bi-shop"></i> {{ order.restaurant }} • ETA {{ order.eta }}m
+                  <i class="bi bi-shop"></i> {{ order.restaurant }}
+                  • <i class="bi bi-geo-alt"></i> {{ order.distanceKm }}km
+                  • ETA {{ order.eta }}m
                 </div>
                 <div class="text-muted fst-italic" style="font-size:0.75rem;">
                   {{ order.items.map(i => `${i.qty}x ${i.name}`).join(', ') }}
@@ -268,11 +278,7 @@
                 </span>
               </div>
               <div class="progress" style="height: 8px;">
-                <div
-                  class="progress-bar"
-                  :class="budgetBarClass"
-                  :style="{ width: budgetPercent + '%' }">
-                </div>
+                <div class="progress-bar" :class="budgetBarClass" :style="{ width: budgetPercent + '%' }"></div>
               </div>
               <div class="text-end mt-1">
                 <span class="small text-muted">of ₹{{ budget }}</span>
@@ -304,38 +310,121 @@
       </div>
     </div>
 
-    <!-- ===== MODAL 1: AI Scan ===== -->
-    <div v-if="showAiScan" class="vue-modal-backdrop" @click.self="showAiScan = false">
-      <div class="vue-modal-box">
-        <!-- Scanning State -->
-        <div v-if="isScanning" class="p-4 text-center py-5">
-          <div class="spinner-grow text-orange mb-3" style="width:3rem; height:3rem;" role="status"></div>
-          <h5 class="fw-bold">AI Agent Searching...</h5>
-          <p class="text-muted small">
-            Scanning hyperlocal top-rated options for
-            <span class="fw-bold text-dark">{{ currentOrderingFor }}</span>
-          </p>
+    <!-- ===== MODAL 0: Add Guest ===== -->
+    <div v-if="showAddGuest" class="vue-modal-backdrop" @click.self="showAddGuest = false">
+      <div class="vue-modal-box p-4" style="max-width: 420px;">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h5 class="fw-bold mb-0"><i class="bi bi-person-plus-fill text-orange me-2"></i>Add Guest</h5>
+          <button class="btn-close" @click="showAddGuest = false"></button>
         </div>
 
-        <!-- Results State -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Guest Name</label>
+          <input
+            type="text"
+            class="form-control"
+            v-model="newGuest.name"
+            placeholder="e.g. Rahul, Priya..."
+            @keyup.enter="confirmAddGuest"
+            autofocus
+          />
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Dietary Preference</label>
+          <select v-model="newGuest.pref" class="form-select">
+            <option>Any</option>
+            <option>Veg</option>
+            <option>Non-Veg</option>
+            <option>Vegan</option>
+            <option>Jain</option>
+            <option>Diabetic</option>
+          </select>
+        </div>
+
+        <div class="mb-4 d-flex align-items-center gap-3">
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" v-model="newGuest.late" id="newGuestLate" />
+            <label class="form-check-label fw-semibold small" for="newGuestLate">Arriving Late?</label>
+          </div>
+          <div v-if="newGuest.late" class="d-flex align-items-center gap-2">
+            <input
+              type="number"
+              v-model.number="newGuest.lateMinutes"
+              class="form-control form-control-sm"
+              style="width:64px;"
+              min="5" max="120"
+            />
+            <span class="small text-muted">mins late</span>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary flex-fill" @click="showAddGuest = false">Cancel</button>
+          <button
+            class="btn btn-orange flex-fill"
+            :disabled="!newGuest.name.trim()"
+            @click="confirmAddGuest">
+            <i class="bi bi-plus-lg me-1"></i> Add to Party
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL 1: AI Scan (calls real backend) ===== -->
+    <div v-if="showAiScan" class="vue-modal-backdrop" @click.self="showAiScan = false">
+      <div class="vue-modal-box">
+        <div v-if="isScanning" class="p-4 text-center py-5">
+          <div class="spinner-grow text-orange mb-3" style="width:3rem; height:3rem;" role="status"></div>
+          <h5 class="fw-bold">Groq AI Filtering...</h5>
+          <p class="text-muted small">
+            Finding nearest restaurants for
+            <strong>{{ currentOrderingFor }}</strong>
+            <span v-if="currentOrderingPref && currentOrderingPref !== 'Any'" class="badge bg-light text-dark border ms-1">{{ currentOrderingPref }}</span>
+          </p>
+          <span class="badge bg-success bg-opacity-10 text-success small">
+            <i class="bi bi-robot me-1"></i> llama-3.3-70b filtering mock data
+          </span>
+        </div>
         <div v-else>
           <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-            <h6 class="fw-bold mb-0">AI Recommended Matches</h6>
+            <div>
+              <h6 class="fw-bold mb-0">
+                Nearest Matches for {{ currentOrderingFor }}
+                <span v-if="currentCategory" class="badge bg-orange ms-1" style="font-size:0.7rem;">{{ currentCategory }}</span>
+              </h6>
+              <span class="small text-muted" v-if="currentOrderingPref && currentOrderingPref !== 'Any' && currentOrderingPref !== 'Any Preference'">
+                <i class="bi bi-funnel-fill me-1"></i>Filtered for: <strong>{{ currentOrderingPref }}</strong>
+              </span>
+              <span v-if="scanWidened" class="small text-warning d-block">
+                <i class="bi bi-info-circle"></i> Search widened to find options
+              </span>
+            </div>
             <button class="btn-close" @click="showAiScan = false"></button>
           </div>
-          <div class="p-3 bg-light">
+          <div class="p-3 bg-light" style="max-height:420px; overflow-y:auto;">
+            <div v-if="scannedRestaurants.length === 0" class="text-center text-muted py-4">
+              No restaurants found nearby. Try changing preference.
+            </div>
             <div
-              v-for="resto in restaurants"
-              :key="resto.name"
+              v-for="resto in scannedRestaurants"
+              :key="resto.id"
               class="restaurant-item bg-white p-3 mb-2"
-              @click="selectRestaurant(resto.name, resto.eta)">
-              <div class="d-flex justify-content-between">
+              @click="selectRestaurant(resto)">
+              <div class="d-flex justify-content-between align-items-start">
                 <h6 class="fw-bold mb-1">{{ resto.name }}</h6>
-                <span class="badge bg-success bg-opacity-10 text-success">
-                  <i class="bi bi-stars"></i> {{ resto.match }}% Match
+                <span class="badge bg-success bg-opacity-10 text-success small">
+                  <i class="bi bi-geo-alt"></i> {{ resto.distanceKm }}km
                 </span>
               </div>
-              <span class="small text-muted">★ {{ resto.rating }} | {{ resto.eta }} mins | ₹{{ resto.delivery }} Delivery</span>
+              <div class="small text-muted mb-1">
+                ★ {{ resto.rating }} &nbsp;|&nbsp;
+                <i class="bi bi-clock"></i> {{ resto.deliveryTime }} &nbsp;|&nbsp;
+                {{ (resto.eligibleMenu || resto.menu || []).length }} eligible items
+              </div>
+              <span v-for="cuisine in resto.cuisines" :key="cuisine" class="badge bg-light text-dark border me-1" style="font-size:0.7rem;">
+                {{ cuisine }}
+              </span>
             </div>
           </div>
         </div>
@@ -348,12 +437,23 @@
         <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
           <div>
             <h5 class="fw-bold mb-0">{{ tempRestaurant }}</h5>
-            <span class="small text-muted">ETA: {{ tempETA }} mins</span>
+            <span class="small text-muted">
+              <i class="bi bi-geo-alt"></i> {{ tempDistanceKm }}km away &nbsp;|&nbsp;
+              ETA: {{ tempETA }} mins
+            </span>
           </div>
           <button class="btn-close" @click="showMenu = false"></button>
         </div>
 
-        <ul class="list-group list-group-flush">
+        <!-- Preference filter notice -->
+        <div v-if="currentOrderingPref && currentOrderingPref !== 'Any'" class="px-3 pt-2">
+          <div class="alert alert-info py-2 mb-0 small">
+            <i class="bi bi-funnel-fill me-1"></i>
+            Showing items safe for <strong>{{ currentOrderingPref }}</strong> preference
+          </div>
+        </div>
+
+        <ul class="list-group list-group-flush" style="max-height:360px; overflow-y:auto;">
           <li
             v-for="(item, idx) in tempMenuSelection"
             :key="idx"
@@ -361,6 +461,11 @@
             <div>
               <div class="fw-semibold">{{ item.name }}</div>
               <div class="small text-muted">₹{{ item.price }}</div>
+              <div class="d-flex gap-1 mt-1">
+                <span v-if="item.isVeg" class="badge bg-success bg-opacity-10 text-success" style="font-size:0.65rem;">Veg</span>
+                <span v-if="item.isJainCompatible" class="badge bg-warning bg-opacity-10 text-warning" style="font-size:0.65rem;">Jain</span>
+                <span v-if="item.isDiabeticFriendly" class="badge bg-info bg-opacity-10 text-info" style="font-size:0.65rem;">Diabetic OK</span>
+              </div>
             </div>
             <div class="quantity-stepper">
               <button v-if="item.qty > 0" class="btn btn-sm btn-outline-danger" @click="updateMenuQty(idx, -1)">
@@ -384,7 +489,161 @@
       </div>
     </div>
 
-    <!-- ===== MODAL 3: Checkout ===== -->
+    <!-- ===== MODAL 3: Late Order Scheduling Confirmation ===== -->
+    <div v-if="showLateSchedule" class="vue-modal-backdrop" @click.self="showLateSchedule = false">
+      <div class="vue-modal-box p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold mb-0"><i class="bi bi-clock-history text-warning me-2"></i>Scheduling Late Order</h5>
+          <button class="btn-close" @click="showLateSchedule = false"></button>
+        </div>
+        <div v-if="lateScheduleLoading" class="text-center py-4">
+          <div class="spinner-border text-orange mb-3" role="status"></div>
+          <p class="text-muted">Groq AI computing optimal order time...</p>
+        </div>
+        <div v-else>
+          <div class="alert alert-warning">
+            <strong>{{ lateScheduleData.guest_name }}</strong> is arriving
+            <strong>{{ lateScheduleData.late_minutes }} mins</strong> late.
+          </div>
+          <div class="bg-light rounded p-3 mb-3">
+            <div class="d-flex justify-content-between mb-2">
+              <span class="text-muted small">Party starts at</span>
+              <strong>{{ partyTime }}</strong>
+            </div>
+            <div class="d-flex justify-content-between mb-2">
+              <span class="text-muted small">Guest arrives at</span>
+              <strong>{{ lateScheduleData.arrival_time }}</strong>
+            </div>
+            <div class="d-flex justify-content-between mb-2">
+              <span class="text-muted small">Restaurant delivery time</span>
+              <strong>{{ lateScheduleData.delivery_mins }} mins</strong>
+            </div>
+            <div class="d-flex justify-content-between border-top pt-2 mt-2">
+              <span class="fw-bold">🚀 Order fires at</span>
+              <strong class="text-orange fs-5">{{ lateScheduleData.fire_at }}</strong>
+            </div>
+          </div>
+          <p class="text-muted small fst-italic mb-3">
+            <i class="bi bi-robot me-1"></i> {{ lateScheduleData.reasoning }}
+          </p>
+          <button class="btn btn-orange w-100" @click="confirmLateSchedule">
+            <i class="bi bi-check-circle me-1"></i> Confirm Scheduled Order
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL 4: Budget Guardian ===== -->
+    <div v-if="showBudgetGuard" class="vue-modal-backdrop" @click.self="showBudgetGuard = false">
+      <div class="vue-modal-box p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold mb-0">
+            <i class="bi bi-shield-exclamation me-2" :class="budgetGuardData.status === 'exceeded' ? 'text-danger' : 'text-success'"></i>
+            Budget Guardian
+          </h5>
+          <button class="btn-close" @click="showBudgetGuard = false"></button>
+        </div>
+
+        <div v-if="budgetGuardLoading" class="text-center py-4">
+          <div class="spinner-border text-orange mb-3" role="status"></div>
+          <p class="text-muted">AI checking your budget...</p>
+        </div>
+
+        <div v-else>
+          <!-- EXCEEDED -->
+          <div v-if="budgetGuardData.status === 'exceeded'">
+            <div class="alert alert-danger">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>
+              Cart exceeds budget by <strong>₹{{ budgetGuardData.exceeded_by }}</strong>. Remove items to proceed.
+            </div>
+            <div v-if="budgetGuardData.remove_suggestions && budgetGuardData.remove_suggestions.length">
+              <p class="fw-bold small mb-2">AI suggests removing:</p>
+              <ul class="list-group list-group-flush mb-3">
+                <li v-for="item in budgetGuardData.remove_suggestions" :key="item" class="list-group-item small py-2">
+                  <i class="bi bi-dash-circle text-danger me-2"></i>{{ item }}
+                </li>
+              </ul>
+            </div>
+            <button class="btn btn-secondary w-100" @click="showBudgetGuard = false">Go Back & Edit Orders</button>
+          </div>
+
+          <!-- OK with upsells -->
+          <div v-else>
+            <div class="alert alert-success">
+              <i class="bi bi-check-circle-fill me-2"></i>
+              Budget on track! <strong>₹{{ budgetGuardData.remaining }}</strong> remaining.
+            </div>
+            <div v-if="budgetGuardData.suggestions && budgetGuardData.suggestions.length">
+              <p class="fw-bold small mb-2">🎉 Add something extra before you go?</p>
+              <div class="d-flex flex-column gap-2 mb-3">
+                <div
+                  v-for="sugg in budgetGuardData.suggestions"
+                  :key="sugg.name"
+                  class="border rounded p-2 d-flex justify-content-between align-items-center">
+                  <div>
+                    <span class="fw-semibold small">{{ sugg.name }}</span>
+                    <span class="text-muted small ms-2">₹{{ sugg.price }}</span>
+                    <div class="text-muted" style="font-size:0.75rem;">{{ sugg.reason }}</div>
+                  </div>
+                  <button class="btn btn-sm btn-outline-orange" @click="addUpsellItem(sugg)">Add</button>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-orange w-100" @click="proceedToPayment">
+              Continue to Payment <i class="bi bi-arrow-right ms-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL 5: Smart Merge ===== -->
+    <div v-if="showMerge" class="vue-modal-backdrop" @click.self="showMerge = false">
+      <div class="vue-modal-box p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold mb-0"><i class="bi bi-diagram-2-fill text-orange me-2"></i>Smart Order Merge</h5>
+          <button class="btn-close" @click="showMerge = false"></button>
+        </div>
+        <div v-if="mergeLoading" class="text-center py-4">
+          <div class="spinner-border text-orange mb-3" role="status"></div>
+          <p class="text-muted">AI scanning for merge opportunities...</p>
+        </div>
+        <div v-else>
+          <div v-if="!mergeData.has_merges" class="text-center py-3">
+            <i class="bi bi-check-circle-fill text-success fs-2 mb-2 d-block"></i>
+            <p class="text-muted">No merge opportunities found. All orders look optimal!</p>
+            <button class="btn btn-orange w-100 mt-2" @click="runBudgetCheck">
+              Continue to Budget Check <i class="bi bi-arrow-right ms-1"></i>
+            </button>
+          </div>
+          <div v-else>
+            <div class="alert alert-info small">
+              <i class="bi bi-lightbulb-fill me-1"></i>
+              Found guests with same restaurant ordering similar items. Merging saves delivery fees!
+            </div>
+            <div v-for="(merge, idx) in mergeData.merges" :key="idx" class="border rounded p-3 mb-2">
+              <div class="fw-bold mb-1">
+                <i class="bi bi-people-fill text-orange me-1"></i>
+                {{ merge.guests.join(' + ') }}
+              </div>
+              <div class="small text-muted mb-1"><i class="bi bi-shop me-1"></i>{{ merge.restaurant }}</div>
+              <div class="small mb-1">Shared items: <span class="fw-semibold">{{ merge.shared_items.join(', ') }}</span></div>
+              <span class="badge bg-success bg-opacity-10 text-success">{{ merge.savings_note }}</span>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+              <button class="btn btn-outline-secondary flex-fill" @click="skipMerge">
+                Skip, Keep Separate
+              </button>
+              <button class="btn btn-orange flex-fill" @click="runBudgetCheck">
+                Noted, Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL 6: Checkout ===== -->
     <div v-if="showCheckout" class="vue-modal-backdrop" @click.self="showCheckout = false">
       <div class="vue-modal-box p-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -401,7 +660,7 @@
             </div>
             <i class="bi bi-chevron-right text-muted"></i>
           </div>
-          <div class="border rounded p-3 d-flex align-items-center justify-content-between hover-lift"
+          <div class="border rounded p-3 mb-3 d-flex align-items-center justify-content-between hover-lift"
             style="cursor:pointer;" @click="processPayment">
             <div class="d-flex align-items-center gap-3">
               <i class="bi bi-credit-card fs-4 text-secondary"></i>
@@ -409,6 +668,10 @@
             </div>
             <i class="bi bi-chevron-right text-muted"></i>
           </div>
+          <!-- Cancel button -->
+          <button class="btn btn-outline-danger w-100" @click="showCheckout = false">
+            <i class="bi bi-x-circle me-1"></i> Cancel & Go Back
+          </button>
         </div>
 
         <div v-else class="text-center py-4">
@@ -418,7 +681,7 @@
       </div>
     </div>
 
-    <!-- ===== MODAL 4: Success ===== -->
+    <!-- ===== MODAL 7: Success ===== -->
     <div v-if="showSuccess" class="vue-modal-backdrop">
       <div class="vue-modal-box overflow-hidden">
         <div class="bg-success text-white text-center py-4">
@@ -432,15 +695,12 @@
             <textarea
               :value="whatsappMessage"
               class="form-control border-0 bg-transparent p-0 text-dark small"
-              rows="10"
-              readonly
-              style="resize:none; font-family:monospace;">
+              rows="10" readonly style="resize:none; font-family:monospace;">
             </textarea>
           </div>
           <div class="d-flex gap-2">
             <button class="btn btn-outline-success w-50" @click="copyShareText">
-              <i class="bi bi-copy me-1"></i>
-              {{ copied ? 'Copied!' : 'Copy' }}
+              <i class="bi bi-copy me-1"></i>{{ copied ? 'Copied!' : 'Copy' }}
             </button>
             <button class="btn btn-success w-50" @click="resetAll">
               <i class="bi bi-whatsapp me-1"></i> Done
@@ -454,16 +714,21 @@
 </template>
 
 <script>
+const API_BASE = 'http://localhost:8000/api'  // adjust to your Django URL
+
 export default {
   name: 'OrchestratorView',
 
   data() {
     return {
-      budget: 4000,
+      budget: Number(this.$route.query.budget) || 4000,
+      hostName: this.$route.query.hostName || '',
+      occasion: this.$route.query.occasion || '',
       strategy: 'member',
-      partySize: 4,
+      partySize: Number(this.$route.query.guestCount) || 4,
       hostPref: 'Any Preference',
       copied: false,
+      partyTime: '20:00',
 
       location: {
         address: 'A-Block, Room 504, Signature Heights',
@@ -472,13 +737,11 @@ export default {
       },
 
       members: [
-        { id: 'm1', name: 'Rahul', pref: 'Non-Veg', late: false },
-        { id: 'm2', name: 'Priya', pref: 'Veg', late: true },
-        { id: 'm3', name: 'Aman', pref: 'Vegan', late: false },
-        { id: 'm4', name: 'Sneha', pref: 'Jain', late: false }
+        { id: 'm0', name: this.$route.query.hostName || 'Host', pref: 'Any', late: false, lateMinutes: 30, isHost: true },
       ],
 
       orders: [],
+      scheduledOrders: [],  // late arrival schedule results from backend
 
       foodCategories: [
         { name: 'Pizza', emoji: '🍕', rating: 4.2, time: 35 },
@@ -487,42 +750,24 @@ export default {
         { name: 'Chinese', emoji: '🍝', rating: 4.3, time: 30 }
       ],
 
-      restaurants: [
-        { name: "Domino's Pizza", eta: 30, rating: 4.4, delivery: 40, match: 98 },
-        { name: 'Burger Singh', eta: 25, rating: 4.2, delivery: 30, match: 92 },
-        { name: 'Behrouz Biryani', eta: 45, rating: 4.5, delivery: 50, match: 88 },
-        { name: "La Pino'z Pizza", eta: 35, rating: 4.1, delivery: 40, match: 85 }
-      ],
-
-      dummyMenus: {
-        "Domino's Pizza": [
-          { name: 'Margherita Pizza (M)', price: 239, qty: 0 },
-          { name: 'Peppy Paneer (M)', price: 399, qty: 0 },
-          { name: 'Chicken Dominator (M)', price: 549, qty: 0 },
-          { name: 'Garlic Breadsticks', price: 109, qty: 0 }
-        ],
-        'Burger Singh': [
-          { name: 'United States of Punjab Burger', price: 189, qty: 0 },
-          { name: 'Udta Punjab Burger', price: 249, qty: 0 },
-          { name: 'Large Fries', price: 99, qty: 0 },
-          { name: 'Coke (330ml)', price: 60, qty: 0 }
-        ],
-        'Behrouz Biryani': [
-          { name: 'Subz-e-Falafel Biryani', price: 329, qty: 0 },
-          { name: 'Murgh Afghani Biryani', price: 449, qty: 0 },
-          { name: 'Gulab Jamun (2 pcs)', price: 89, qty: 0 }
-        ],
-        "La Pino'z Pizza": [
-          { name: 'Cheesy 7 Pizza', price: 345, qty: 0 },
-          { name: 'Burn to Hell Pizza', price: 425, qty: 0 },
-          { name: 'Choco Lava Cake', price: 110, qty: 0 }
-        ]
-      },
-
       // Modal states
+      showAddGuest: false,
+      newGuest: { name: '', pref: 'Any', late: false, lateMinutes: 30 },
       showAiScan: false,
       isScanning: false,
+      scannedRestaurants: [],
+      scanWidened: false,
+      currentCategory: null,
       showMenu: false,
+      showLateSchedule: false,
+      lateScheduleLoading: false,
+      lateScheduleData: {},
+      showBudgetGuard: false,
+      budgetGuardLoading: false,
+      budgetGuardData: {},
+      showMerge: false,
+      mergeLoading: false,
+      mergeData: { has_merges: false, merges: [] },
       showCheckout: false,
       showSuccess: false,
       isProcessing: false,
@@ -530,11 +775,17 @@ export default {
       // Temp order state
       currentOrderingForId: null,
       currentOrderingFor: '',
+      currentOrderingPref: '',
+      currentIsLate: false,
+      currentLateMinutes: 30,
+      tempRestaurantObj: null,
       tempRestaurant: null,
       tempETA: 0,
+      tempDistanceKm: 0,
       tempMenuSelection: [],
 
-      whatsappMessage: ''
+      whatsappMessage: '',
+      pendingLateOrder: null,  // holds order data while waiting for schedule confirm
     }
   },
 
@@ -572,38 +823,172 @@ export default {
   },
 
   methods: {
+    // ── Helpers ──
     hasOrdered(name) {
       return this.orders.some(o => o.who === name)
     },
-
-    addGuest() {
-      const names = ['Karan', 'Neha', 'Vikram', 'Anjali', 'Rohan']
-      const name = names[Math.floor(Math.random() * names.length)]
-      this.members.push({ id: 'm' + Date.now(), name, pref: 'Any', late: false })
+    getScheduledOrder(name) {
+      return this.scheduledOrders.find(s => s.guest_name === name) || null
+    },
+    prefKey(pref) {
+      const map = {
+        'Any': 'Any', 'any': 'Any', 'Any Preference': 'Any',
+        'Veg': 'Veg', 'Pure Veg': 'Veg',
+        'Vegan': 'Vegan',
+        'Non-Veg': 'Non-Veg',
+        'Jain': 'Jain',
+        'Diabetic': 'Diabetic'
+      }
+      return map[pref] || 'Any'
     },
 
+    addGuest() {
+      // Reset form and open modal
+      this.newGuest = { name: '', pref: 'Any', late: false, lateMinutes: 30 }
+      this.showAddGuest = true
+    },
+
+    confirmAddGuest() {
+      if (!this.newGuest.name.trim()) return
+      this.members.push({
+        id: 'm' + Date.now(),
+        name: this.newGuest.name.trim(),
+        pref: this.newGuest.pref,
+        late: this.newGuest.late,
+        lateMinutes: this.newGuest.lateMinutes,
+        isHost: false
+      })
+      this.showAddGuest = false
+    },
     removeMember(id) {
       const member = this.members.find(m => m.id === id)
-      if (member) {
-        this.orders = this.orders.filter(o => o.who !== member.name)
-      }
+      if (member) this.orders = this.orders.filter(o => o.who !== member.name)
       this.members = this.members.filter(m => m.id !== id)
     },
 
-    startOrderFlow(id, name) {
+    // ── Feature 1: Start Order Flow with real backend restaurant fetch ──
+    async startOrderFlow(id, name, pref, isLate, lateMinutes, category) {
       this.currentOrderingForId = id
       this.currentOrderingFor = name
+      this.currentOrderingPref = pref || 'Any'
+      this.currentCategory = category || null
+      this.currentIsLate = isLate || false
+      this.currentLateMinutes = lateMinutes || 30
       this.isScanning = true
+      this.scannedRestaurants = []
+      this.scanWidened = false
       this.showAiScan = true
 
-      setTimeout(() => { this.isScanning = false }, 1800)
+      try {
+        const resp = await fetch(`${API_BASE}/restaurants/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pref: this.prefKey(this.currentOrderingPref),
+            category: category || null,
+            guest_name: name
+          })
+        })
+        const data = await resp.json()
+        this.scannedRestaurants = data.restaurants || []
+        this.scanWidened = data.widened || false
+      } catch (e) {
+        // Fallback: complete restaurant + menu data, filter by pref locally
+        const allFallback = [
+          {
+            id: 'rest_001', name: 'Punjab Grill', distanceKm: 1.2, rating: 4.3,
+            deliveryTime: '30-35 mins', deliveryMins: 33, cuisines: ['North Indian', 'Punjabi'],
+            menu: [
+              { id: 'item_001', name: 'Paneer Butter Masala', price: 280, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
+              { id: 'item_002', name: 'Dal Makhani', price: 220, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_003', name: 'Chicken Tikka', price: 320, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_004', name: 'Tandoori Roti', price: 40, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_005', name: 'Jeera Rice', price: 160, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
+            ]
+          },
+          {
+            id: 'rest_002', name: 'Barbeque Nation', distanceKm: 2.8, rating: 4.5,
+            deliveryTime: '45-50 mins', deliveryMins: 48, cuisines: ['Barbecue', 'Multi-Cuisine'],
+            menu: [
+              { id: 'item_007', name: 'Veg Seekh Kebab', price: 260, qty: 0, isVeg: true, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_008', name: 'Mutton Seekh Kebab', price: 380, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_009', name: 'Paneer Tikka', price: 300, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_010', name: 'Fish Tikka', price: 350, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+            ]
+          },
+          {
+            id: 'rest_003', name: 'Satvic Jain Kitchen', distanceKm: 0.9, rating: 4.1,
+            deliveryTime: '25-30 mins', deliveryMins: 28, cuisines: ['Jain', 'Pure Veg'],
+            menu: [
+              { id: 'item_011', name: 'Jain Dal Baati', price: 240, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
+              { id: 'item_012', name: 'Jain Paneer Sabzi', price: 210, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_013', name: 'Jain Khichdi', price: 150, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_014', name: 'Jain Chapati (4 pcs)', price: 60, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+            ]
+          },
+          {
+            id: 'rest_004', name: 'Green Bowl Vegan Co.', distanceKm: 1.8, rating: 4.2,
+            deliveryTime: '35-40 mins', deliveryMins: 38, cuisines: ['Vegan', 'Healthy'],
+            menu: [
+              { id: 'item_015', name: 'Vegan Buddha Bowl', price: 290, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_016', name: 'Tofu Stir Fry', price: 260, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_017', name: 'Multigrain Wrap', price: 180, qty: 0, isVeg: true, isJainCompatible: false, isDiabeticFriendly: true },
+            ]
+          },
+          {
+            id: 'rest_005', name: 'Spice Route Non-Veg', distanceKm: 3.5, rating: 4.4,
+            deliveryTime: '40-45 mins', deliveryMins: 42, cuisines: ['Mughlai', 'Non-Veg'],
+            menu: [
+              { id: 'item_019', name: 'Butter Chicken', price: 340, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: false },
+              { id: 'item_020', name: 'Mutton Biryani', price: 420, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: false },
+              { id: 'item_021', name: 'Egg Curry', price: 220, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_022', name: 'Rumali Roti', price: 35, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+            ]
+          },
+          {
+            id: 'rest_006', name: 'DiabEats Health Kitchen', distanceKm: 2.2, rating: 4.0,
+            deliveryTime: '30-35 mins', deliveryMins: 32, cuisines: ['Healthy', 'Low GI'],
+            menu: [
+              { id: 'item_023', name: 'Millets Bowl', price: 200, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_024', name: 'Grilled Chicken Salad', price: 280, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_025', name: 'Quinoa Khichdi', price: 220, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+            ]
+          },
+        ]
+
+        // ── Correct preference filtering ──
+        const prefLower = (this.currentOrderingPref || 'any').toLowerCase().trim()
+
+        const filterMenu = (menu) => {
+          if (prefLower === 'jain') return menu.filter(i => i.isJainCompatible)
+          if (prefLower === 'veg' || prefLower === 'pure veg') return menu.filter(i => i.isVeg)
+          if (prefLower === 'vegan') return menu.filter(i => i.isVeg)
+          if (prefLower === 'diabetic') return menu.filter(i => i.isDiabeticFriendly)
+          // Non-Veg, Any → all items allowed
+          return menu
+        }
+
+        this.scannedRestaurants = allFallback
+          .map(r => {
+            const eligible = filterMenu(r.menu)
+            return eligible.length > 0 ? { ...r, eligibleMenu: eligible } : null
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.distanceKm - b.distanceKm)
+      } finally {
+        this.isScanning = false
+      }
     },
 
-    selectRestaurant(name, eta) {
+    selectRestaurant(resto) {
       this.showAiScan = false
-      this.tempRestaurant = name
-      this.tempETA = eta
-      this.tempMenuSelection = this.dummyMenus[name].map(item => ({ ...item, qty: 0 }))
+      this.tempRestaurantObj = resto
+      this.tempRestaurant = resto.name
+      this.tempETA = resto.deliveryMins || 35
+      this.tempDistanceKm = resto.distanceKm
+      // Use eligibleMenu (preference-filtered) if available, else full menu
+      const menuSource = (resto.eligibleMenu && resto.eligibleMenu.length) ? resto.eligibleMenu : resto.menu
+      this.tempMenuSelection = (menuSource || []).map(item => ({ ...item, qty: 0 }))
       setTimeout(() => { this.showMenu = true }, 300)
     },
 
@@ -615,30 +1000,173 @@ export default {
       }
     },
 
-    confirmMenuSelection() {
+    // ── Feature 2: Confirm menu — if late, call schedule endpoint ──
+    async confirmMenuSelection() {
       const selected = this.tempMenuSelection.filter(i => i.qty > 0)
-      if (selected.length === 0) {
-        alert('Please add items to cart.')
-        return
-      }
+      if (selected.length === 0) { alert('Please add at least one item.'); return }
+
       const itemTotal = selected.reduce((sum, i) => sum + i.price * i.qty, 0)
-      this.orders = this.orders.filter(o => o.who !== this.currentOrderingFor)
-      this.orders.push({
+      const orderData = {
         id: Date.now(),
         who: this.currentOrderingFor,
         restaurant: this.tempRestaurant,
+        restaurant_id: this.tempRestaurantObj?.id,
         eta: this.tempETA,
+        distanceKm: this.tempDistanceKm,
         items: selected,
-        itemTotal
-      })
-      this.showMenu = false
+        itemTotal,
+        isLate: this.currentIsLate,
+      }
+
+      if (this.currentIsLate) {
+        // Hold order data and show scheduling modal
+        this.pendingLateOrder = orderData
+        this.showMenu = false
+        await this.computeLateSchedule(orderData)
+      } else {
+        this.orders = this.orders.filter(o => o.who !== this.currentOrderingFor)
+        this.orders.push(orderData)
+        this.showMenu = false
+      }
     },
 
-    openCheckout() {
+    async computeLateSchedule(orderData) {
+      this.lateScheduleLoading = true
+      this.showLateSchedule = true
+
+      try {
+        const resp = await fetch(`${API_BASE}/schedule-order/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            guest_name: orderData.who,
+            pref: this.currentOrderingPref,
+            late_minutes: this.currentLateMinutes,
+            party_time: this.partyTime,
+            restaurant_id: orderData.restaurant_id,
+            items: orderData.items.map(i => ({ id: i.id, qty: i.qty }))
+          })
+        })
+        const data = await resp.json()
+        // Compute arrival time display
+        const [h, m] = this.partyTime.split(':').map(Number)
+        const arrivalDate = new Date(2000, 0, 1, h, m + this.currentLateMinutes)
+        const arrivalStr = `${String(arrivalDate.getHours()).padStart(2,'0')}:${String(arrivalDate.getMinutes()).padStart(2,'0')}`
+
+        this.lateScheduleData = {
+          ...data,
+          arrival_time: arrivalStr,
+          late_minutes: this.currentLateMinutes
+        }
+      } catch (e) {
+        // Fallback computation
+        const [h, m] = this.partyTime.split(':').map(Number)
+        const arrivalDate = new Date(2000, 0, 1, h, m + this.currentLateMinutes)
+        const fireDate = new Date(2000, 0, 1, arrivalDate.getHours(), arrivalDate.getMinutes() - (this.tempETA || 35))
+        this.lateScheduleData = {
+          guest_name: orderData.who,
+          late_minutes: this.currentLateMinutes,
+          fire_at: `${String(fireDate.getHours()).padStart(2,'0')}:${String(fireDate.getMinutes()).padStart(2,'0')}`,
+          reasoning: `Order fires ${this.tempETA} mins before ${orderData.who} arrives.`,
+          delivery_mins: this.tempETA,
+          arrival_time: `${String(arrivalDate.getHours()).padStart(2,'0')}:${String(arrivalDate.getMinutes()).padStart(2,'0')}`
+        }
+      } finally {
+        this.lateScheduleLoading = false
+      }
+    },
+
+    confirmLateSchedule() {
+      if (this.pendingLateOrder) {
+        this.orders = this.orders.filter(o => o.who !== this.pendingLateOrder.who)
+        this.orders.push(this.pendingLateOrder)
+        // Store schedule locally too
+        this.scheduledOrders = this.scheduledOrders.filter(s => s.guest_name !== this.lateScheduleData.guest_name)
+        this.scheduledOrders.push(this.lateScheduleData)
+        this.pendingLateOrder = null
+      }
+      this.showLateSchedule = false
+    },
+
+    // ── Feature 4: Merge check THEN Feature 3: Budget check, in sequence ──
+    async openCheckout() {
       if (this.orders.length === 0) {
         alert('Please add some orders before checking out!')
         return
       }
+      // Step 1: Run merge check first
+      await this.runMergeCheck()
+    },
+
+    async runMergeCheck() {
+      this.mergeLoading = true
+      this.showMerge = true
+      try {
+        const resp = await fetch(`${API_BASE}/merge-check/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orders: this.orders })
+        })
+        const data = await resp.json()
+        this.mergeData = { has_merges: data.has_merges || false, merges: data.merges || [] }
+      } catch (e) {
+        this.mergeData = { has_merges: false, merges: [] }
+      } finally {
+        this.mergeLoading = false
+      }
+    },
+
+    skipMerge() {
+      this.showMerge = false
+      this.runBudgetCheck()
+    },
+
+    // ── Feature 3: Budget Guardian ──
+    async runBudgetCheck() {
+      this.showMerge = false
+      this.budgetGuardLoading = true
+      this.showBudgetGuard = true
+
+      try {
+        const resp = await fetch(`${API_BASE}/budget-check/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            budget: this.budget,
+            current_total: this.billFinalTotal,
+            guests: this.members.map(m => ({ name: m.name, pref: m.pref })),
+            current_orders: this.orders
+          })
+        })
+        const data = await resp.json()
+        this.budgetGuardData = data
+      } catch (e) {
+        // Fallback: simple local check
+        this.budgetGuardData = {
+          status: this.isOverBudget ? 'exceeded' : 'ok',
+          remaining: this.budgetLeft,
+          exceeded_by: this.isOverBudget ? Math.abs(this.budgetLeft) : 0,
+          suggestions: []
+        }
+      } finally {
+        this.budgetGuardLoading = false
+      }
+    },
+
+    addUpsellItem(sugg) {
+      // Add upsell to first order's items as a bonus item (host's order)
+      if (this.orders.length > 0) {
+        const firstOrder = this.orders[0]
+        firstOrder.items.push({ name: sugg.name, price: sugg.price, qty: 1 })
+        firstOrder.itemTotal += sugg.price
+      }
+      // Remove from suggestions
+      this.budgetGuardData.suggestions = this.budgetGuardData.suggestions.filter(s => s.name !== sugg.name)
+      this.budgetGuardData.remaining -= sugg.price
+    },
+
+    proceedToPayment() {
+      this.showBudgetGuard = false
       this.isProcessing = false
       this.showCheckout = true
     },
@@ -654,23 +1182,31 @@ export default {
 
     generateWhatsAppMessage() {
       let msg = `🎉 *PARTY DETAILS* 🎉\n\n`
+      if (this.hostName) msg += `👑 *Host:* ${this.hostName}\n`
+      if (this.occasion) msg += `🎊 *Occasion:* ${this.occasion}\n`
       msg += `📍 *Venue:*\n${this.location.address}, ${this.location.city}\n\n`
       msg += `🍕 *Orders:*\n`
       this.orders.forEach(o => {
         const itemsStr = o.items.map(i => i.name).join(', ')
-        msg += `• ${o.who} → ${itemsStr} (${o.restaurant})\n`
+        const lateTag = o.isLate ? ' ⏰ (Scheduled)' : ''
+        msg += `• ${o.who}${lateTag} → ${itemsStr} (${o.restaurant})\n`
       })
 
       const lateMembers = this.members.filter(m => m.late).map(m => m.name)
       if (this.strategy === 'member' && lateMembers.length > 0) {
-        msg += `\n⏰ *Late Arrivals (AI Delayed Order):*\n${lateMembers.join(', ')}\n`
+        msg += `\n⏰ *Late Arrivals (AI Scheduled):*\n`
+        lateMembers.forEach(name => {
+          const sched = this.getScheduledOrder(name)
+          if (sched) msg += `  • ${name} — Order fires at ${sched.fire_at}\n`
+          else msg += `  • ${name}\n`
+        })
       }
 
       const maxEta = Math.max(...this.orders.map(o => o.eta))
       msg += `\n🚴 *Max ETA:* ${maxEta} mins\n`
       msg += `\n💰 *Total:* ₹${this.billFinalTotal}`
-      msg += `\n🔗 *UPI Split Link:*\nupi://pay?pa=ujju@upi&pn=Ujju&am=${Math.round(this.billFinalTotal / this.members.length)}\n`
-
+      const perHead = this.members.length > 0 ? Math.round(this.billFinalTotal / this.members.length) : 0
+      msg += `\n🔗 *UPI Split (₹${perHead}/person):*\nupi://pay?pa=host@upi&pn=${this.hostName || 'Host'}&am=${perHead}\n`
       this.whatsappMessage = msg
     },
 
@@ -683,6 +1219,7 @@ export default {
     resetAll() {
       this.showSuccess = false
       this.orders = []
+      this.scheduledOrders = []
       this.$router.push('/')
     }
   }
@@ -690,22 +1227,11 @@ export default {
 </script>
 
 <style scoped>
-.main-content-area {
-  padding-bottom: 100px;
-}
-.sticky-summary {
-  position: sticky;
-  top: 90px;
-  z-index: 10;
-}
+.main-content-area { padding-bottom: 100px; }
+.sticky-summary { position: sticky; top: 90px; z-index: 10; }
 .bottom-action-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  background: white;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
-  z-index: 1050;
-  padding: 1rem 0;
+  position: fixed; bottom: 0; left: 0; width: 100%;
+  background: white; box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+  z-index: 1050; padding: 1rem 0;
 }
 </style>
