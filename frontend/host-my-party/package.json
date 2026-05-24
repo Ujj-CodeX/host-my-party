@@ -12,6 +12,8 @@
     "lint:eslint": "eslint . --fix --cache"
   },
   "dependencies": {
+    "bootstrap": "^5.3.8",
+    "bootstrap-icons": "^1.13.1",
     "vue": "^3.5.32",
     "vue-router": "^5.0.4"
   },
