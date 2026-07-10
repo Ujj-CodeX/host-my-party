@@ -16,7 +16,7 @@ client = Groq(api_key=settings.GROQ_API_KEY)
 
 
 # ─────────────────────────────────────────────
-# 1. RESTAURANT RECOMMENDATIONS (distance-first)
+# 1. RESTAURANT RECOMMENDATIONS 
 # ─────────────────────────────────────────────
 @api_view(['POST'])
 def get_restaurants(request):
