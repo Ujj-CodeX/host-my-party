@@ -1,20 +1,10 @@
 from django.urls import path
+
 from . import views
 
 urlpatterns = [
-    # Legacy
-    path('plan-party/', views.plan_party),
-
-    # Feature 1 — Distance-based restaurant recommendations
-    path('restaurants/', views.get_restaurants),
-
-    # Feature 2 — Late arrival scheduling
-    path('schedule-order/', views.schedule_late_order),
-    path('scheduled-orders/', views.get_scheduled_orders),
-
-    # Feature 3 — Budget guardian
-    path('budget-check/', views.budget_check),
-
-    # Feature 4 — Shared preference merger
-    path('merge-check/', views.merge_check),
+    path("parties/", views.PartyListCreateView.as_view(), name="party-list-create"),
+    path("parties/<str:party_code>/", views.PartyDetailView.as_view(), name="party-detail"),
+    path("parties/<str:party_code>/guests/", views.GuestListCreateView.as_view(), name="guest-list-create"),
+    path("parties/<str:party_code>/guests/<int:pk>/", views.GuestDetailView.as_view(), name="guest-detail"),
 ]
