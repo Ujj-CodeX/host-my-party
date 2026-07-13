@@ -22,8 +22,25 @@ from .mock_swiggy import (
     get_upsell_items_for_guests,
     RESTAURANTS,
 )
+from .groq_utils import call_groq, finalize_log
+from core.models import GroqCallLog
+from party.models import Party
 
 client = Groq(api_key=settings.GROQ_API_KEY)
+
+
+def _get_optional_party(request):
+    """
+    These endpoints aren't behind host auth yet (Section 4's JWT layer
+    isn't wired here), so this is a best-effort lookup, not an ownership
+    check — it only affects which Party a GroqCallLog row is attributed
+    to. Once these views move behind auth, this should be replaced with
+    get_owned_party(request, party_code).
+    """
+    party_id = request.data.get('party_id') if hasattr(request, 'data') else None
+    if not party_id:
+        return None
+    return Party.objects.filter(id=party_id).first()
 
 
 # ─────────────────────────────────────────────
@@ -61,18 +78,21 @@ def get_restaurants(request):
         "No explanation, no markdown, just the JSON array."
     )
 
-    groq_resp = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=2000
+    party = _get_optional_party(request)
+    raw, log_entry = call_groq(
+        client,
+        call_type=GroqCallLog.CallType.RESTAURANT_FILTER,
+        prompt=prompt,
+        request_payload={"pref": pref, "category": category, "guest_name": guest_name},
+        party=party,
+        max_tokens=2000,
     )
-
-    raw = groq_resp.choices[0].message.content.strip()
     try:
         clean = raw.replace("```json", "").replace("```", "").strip()
         restaurants = json.loads(clean)
         widened = False
-    except Exception:
+        finalize_log(log_entry, success=True, parsed=restaurants)
+    except Exception as exc:
         # Hard fallback — pure Python filter, no Groq
         restaurants = []
         for r in RESTAURANTS:
@@ -92,6 +112,10 @@ def get_restaurants(request):
                 restaurants.append({**r, 'eligibleMenu': eligible})
         restaurants.sort(key=lambda x: x['distanceKm'])
         widened = True
+        finalize_log(
+            log_entry, success=False,
+            error_message=f"JSON parse failed, used Python fallback filter: {exc}",
+        )
 
     return Response({
         "success": True,
@@ -137,18 +161,24 @@ def schedule_late_order(request):
         f'{{ "fire_at": "HH:MM", "reasoning": "one sentence" }}'
     )
 
-    groq_resp = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=100
+    party = _get_optional_party(request)
+    raw, log_entry = call_groq(
+        client,
+        call_type=GroqCallLog.CallType.SCHEDULING,
+        prompt=prompt,
+        request_payload={
+            "guest_name": guest_name, "pref": pref, "late_minutes": late_minutes,
+            "party_time": party_time_str, "restaurant_id": restaurant_id,
+        },
+        party=party,
+        max_tokens=100,
     )
-
-    raw = groq_resp.choices[0].message.content.strip()
     try:
         # Strip markdown fences if present
         clean = raw.replace("```json", "").replace("```", "").strip()
         schedule_data = json.loads(clean)
-    except Exception:
+        finalize_log(log_entry, success=True, parsed=schedule_data)
+    except Exception as exc:
         # Fallback: compute manually
         party_dt = datetime.strptime(party_time_str, "%H:%M")
         arrival_dt = party_dt + timedelta(minutes=late_minutes)
@@ -157,6 +187,10 @@ def schedule_late_order(request):
             "fire_at": fire_dt.strftime("%H:%M"),
             "reasoning": f"Order fires {delivery_mins} mins before {guest_name} arrives."
         }
+        finalize_log(
+            log_entry, success=False,
+            error_message=f"JSON parse failed, used manual fallback: {exc}",
+        )
 
     # Store in cache (key: scheduled_orders list)
     scheduled = cache.get('scheduled_orders', [])
@@ -248,23 +282,33 @@ def budget_check(request):
             "message": "Budget on track. Nothing extra to recommend."
         })
 
-    groq_resp = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=300
+    party = _get_optional_party(request)
+    raw, log_entry = call_groq(
+        client,
+        call_type=GroqCallLog.CallType.BUDGET_GUARDIAN,
+        prompt=prompt,
+        request_payload={
+            "budget": budget, "current_total": current_total,
+            "remaining": remaining, "guest_count": len(guests),
+        },
+        party=party,
+        max_tokens=300,
     )
-
-    raw = groq_resp.choices[0].message.content.strip()
     try:
         clean = raw.replace("```json", "").replace("```", "").strip()
         result = json.loads(clean)
-    except Exception:
+        finalize_log(log_entry, success=True, parsed=result)
+    except Exception as exc:
         result = {
             "status": "exceeded" if remaining < 0 else "ok",
             "remaining": remaining,
             "suggestions": [],
             "message": "Could not parse AI response."
         }
+        finalize_log(
+            log_entry, success=False,
+            error_message=f"JSON parse failed: {exc}",
+        )
 
     return Response({"success": True, **result})
 
@@ -307,18 +351,29 @@ def merge_check(request):
         '"restaurant": "Name", "shared_items": ["Item 1"], "savings_note": "Save ₹X on delivery" }] }'
     )
 
-    groq_resp = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=400
+    party = _get_optional_party(request)
+    raw, log_entry = call_groq(
+        client,
+        call_type=GroqCallLog.CallType.MERGE_CHECK,
+        prompt=prompt,
+        request_payload={
+            "order_count": len(orders),
+            "guests": [o.get("who") for o in orders],
+            "restaurants": list({o.get("restaurant") for o in orders}),
+        },
+        party=party,
+        max_tokens=400,
     )
-
-    raw = groq_resp.choices[0].message.content.strip()
     try:
         clean = raw.replace("```json", "").replace("```", "").strip()
         result = json.loads(clean)
-    except Exception:
+        finalize_log(log_entry, success=True, parsed=result)
+    except Exception as exc:
         result = {"has_merges": False, "merges": []}
+        finalize_log(
+            log_entry, success=False,
+            error_message=f"JSON parse failed: {exc}",
+        )
 
     return Response({"success": True, **result})
 
