@@ -1,6 +1,7 @@
 """
 accounts app — everything related to who a person is and how they log in.
 Section 4 of the project docs.
+
 """
 
 import uuid
