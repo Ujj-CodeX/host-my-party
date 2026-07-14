@@ -13,6 +13,7 @@ RESTAURANTS = [
         "distanceKm": 1.2,
         "availabilityStatus": "OPEN",
         "costForTwo": 600,
+        "seatingCapacity": 60,
         "menu": [
             {"id": "item_001", "name": "Paneer Butter Masala", "price": 280, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": False},
             {"id": "item_002", "name": "Dal Makhani", "price": 220, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": True},
@@ -32,6 +33,7 @@ RESTAURANTS = [
         "distanceKm": 2.8,
         "availabilityStatus": "OPEN",
         "costForTwo": 800,
+        "seatingCapacity": 100,
         "menu": [
             {"id": "item_007", "name": "Veg Seekh Kebab", "price": 260, "isVeg": True, "isJainCompatible": False, "isDiabeticFriendly": True},
             {"id": "item_008", "name": "Mutton Seekh Kebab", "price": 380, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": True},
@@ -49,6 +51,7 @@ RESTAURANTS = [
         "distanceKm": 0.9,
         "availabilityStatus": "OPEN",
         "costForTwo": 400,
+        "seatingCapacity": 25,
         "menu": [
             {"id": "item_011", "name": "Jain Dal Baati Churma", "price": 240, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": False},
             {"id": "item_012", "name": "Jain Paneer Sabzi", "price": 210, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": True},
@@ -66,6 +69,7 @@ RESTAURANTS = [
         "distanceKm": 1.8,
         "availabilityStatus": "OPEN",
         "costForTwo": 550,
+        "seatingCapacity": 30,
         "menu": [
             {"id": "item_015", "name": "Vegan Buddha Bowl", "price": 290, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": True},
             {"id": "item_016", "name": "Tofu Stir Fry", "price": 260, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": True},
@@ -83,6 +87,7 @@ RESTAURANTS = [
         "distanceKm": 3.5,
         "availabilityStatus": "OPEN",
         "costForTwo": 700,
+        "seatingCapacity": 50,
         "menu": [
             {"id": "item_019", "name": "Butter Chicken", "price": 340, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_020", "name": "Mutton Biryani", "price": 420, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -100,6 +105,7 @@ RESTAURANTS = [
         "distanceKm": 2.2,
         "availabilityStatus": "OPEN",
         "costForTwo": 480,
+        "seatingCapacity": 25,
         "menu": [
             {"id": "item_023", "name": "Millets Bowl", "price": 200, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": True},
             {"id": "item_024", "name": "Grilled Chicken Salad", "price": 280, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": True},
@@ -119,6 +125,7 @@ RESTAURANTS = [
         "distanceKm": 1.0,
         "availabilityStatus": "OPEN",
         "costForTwo": 500,
+        "seatingCapacity": 20,
         "menu": [
             {"id": "item_027", "name": "Margherita Pizza (M)", "price": 239, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": False},
             {"id": "item_028", "name": "Peppy Paneer Pizza (M)", "price": 349, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": False},
@@ -138,6 +145,7 @@ RESTAURANTS = [
         "distanceKm": 1.5,
         "availabilityStatus": "OPEN",
         "costForTwo": 450,
+        "seatingCapacity": 30,
         "menu": [
             {"id": "item_033", "name": "Cheesy 7 Pizza (M)", "price": 345, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": False},
             {"id": "item_034", "name": "Burn to Hell Pizza (M)", "price": 425, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -156,6 +164,7 @@ RESTAURANTS = [
         "distanceKm": 2.1,
         "availabilityStatus": "OPEN",
         "costForTwo": 550,
+        "seatingCapacity": 50,
         "menu": [
             {"id": "item_038", "name": "Veggie Supreme Pizza (M)", "price": 379, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": False},
             {"id": "item_039", "name": "Chicken BBQ Pizza (M)", "price": 449, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -176,6 +185,7 @@ RESTAURANTS = [
         "distanceKm": 0.8,
         "availabilityStatus": "OPEN",
         "costForTwo": 400,
+        "seatingCapacity": 20,
         "menu": [
             {"id": "item_043", "name": "Punjab Da Burger (Veg)", "price": 189, "isVeg": True, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_044", "name": "Udta Punjab Chicken Burger", "price": 249, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -195,6 +205,7 @@ RESTAURANTS = [
         "distanceKm": 1.1,
         "availabilityStatus": "OPEN",
         "costForTwo": 350,
+        "seatingCapacity": 40,
         "menu": [
             {"id": "item_049", "name": "McVeggie Burger", "price": 149, "isVeg": True, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_050", "name": "McAloo Tikki Burger", "price": 109, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": False},
@@ -214,6 +225,7 @@ RESTAURANTS = [
         "distanceKm": 1.6,
         "availabilityStatus": "OPEN",
         "costForTwo": 380,
+        "seatingCapacity": 35,
         "menu": [
             {"id": "item_055", "name": "Veg Whopper", "price": 199, "isVeg": True, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_056", "name": "Chicken Whopper", "price": 259, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -235,6 +247,7 @@ RESTAURANTS = [
         "distanceKm": 2.0,
         "availabilityStatus": "OPEN",
         "costForTwo": 750,
+        "seatingCapacity": 0,
         "menu": [
             {"id": "item_061", "name": "Subz-e-Falafel Biryani (Veg)", "price": 329, "isVeg": True, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_062", "name": "Murgh Afghani Biryani", "price": 449, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -254,6 +267,7 @@ RESTAURANTS = [
         "distanceKm": 1.4,
         "availabilityStatus": "OPEN",
         "costForTwo": 600,
+        "seatingCapacity": 40,
         "menu": [
             {"id": "item_067", "name": "Hyderabadi Veg Biryani", "price": 279, "isVeg": True, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_068", "name": "Hyderabadi Chicken Biryani", "price": 369, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -273,6 +287,7 @@ RESTAURANTS = [
         "distanceKm": 3.0,
         "availabilityStatus": "OPEN",
         "costForTwo": 700,
+        "seatingCapacity": 80,
         "menu": [
             {"id": "item_073", "name": "Special Chicken Biryani", "price": 399, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_074", "name": "Special Mutton Biryani", "price": 479, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -294,6 +309,7 @@ RESTAURANTS = [
         "distanceKm": 1.3,
         "availabilityStatus": "OPEN",
         "costForTwo": 450,
+        "seatingCapacity": 40,
         "menu": [
             {"id": "item_079", "name": "Veg Hakka Noodles", "price": 179, "isVeg": True, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_080", "name": "Chicken Hakka Noodles", "price": 229, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -314,6 +330,7 @@ RESTAURANTS = [
         "distanceKm": 2.3,
         "availabilityStatus": "OPEN",
         "costForTwo": 400,
+        "seatingCapacity": 35,
         "menu": [
             {"id": "item_086", "name": "Veg Spring Rolls (6 pcs)", "price": 149, "isVeg": True, "isJainCompatible": False, "isDiabeticFriendly": False},
             {"id": "item_087", "name": "Chicken Spring Rolls (6 pcs)", "price": 199, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": False},
@@ -334,6 +351,7 @@ RESTAURANTS = [
         "distanceKm": 3.2,
         "availabilityStatus": "OPEN",
         "costForTwo": 500,
+        "seatingCapacity": 45,
         "menu": [
             {"id": "item_093", "name": "Veg Tom Yum Soup", "price": 179, "isVeg": True, "isJainCompatible": True, "isDiabeticFriendly": True},
             {"id": "item_094", "name": "Chicken Tom Yum Soup", "price": 219, "isVeg": False, "isJainCompatible": False, "isDiabeticFriendly": True},
@@ -397,6 +415,121 @@ def get_mock_restaurants(query, guests):
         "success": True,
         "data": {"restaurants": RESTAURANTS},
         "message": f"Found {len(RESTAURANTS)} restaurants near you"
+    }
+
+
+def get_dineout_restaurants(guest_count, needs_veg=False, needs_jain=False, max_distance_km=10.0):
+    """
+    Section 5.4.2 — Dineout filtering is restaurant-level, not item-level
+    (unlike Food Delivery). Rather than maintaining a second, duplicate
+    restaurant list with hand-set servesVeg/hasJainOptions flags (which
+    would drift out of sync with the menu data over time), those flags
+    are DERIVED here from the same RESTAURANTS menu data Food Delivery
+    already uses — one source of truth.
+
+    seatingCapacity is the one field that genuinely can't be derived
+    (it's a physical fact about the restaurant, not a menu property), so
+    it's a real field on each restaurant dict above.
+
+    Note: seatingCapacity=0 (e.g. Behrouz Biryani, a real cloud-kitchen-
+    only brand) means "excluded from Dineout" — matches reality, since a
+    restaurant with no physical seating can't host a table booking at all.
+    """
+    matching = []
+    for r in RESTAURANTS:
+        if r["distanceKm"] > max_distance_km:
+            continue
+        if r["availabilityStatus"] != "OPEN":
+            continue
+        if r["seatingCapacity"] < guest_count:
+            continue
+
+        serves_veg = any(item["isVeg"] for item in r["menu"])
+        serves_non_veg = any(not item["isVeg"] for item in r["menu"])
+        has_jain_options = any(item["isJainCompatible"] for item in r["menu"])
+
+        if needs_veg and not serves_veg:
+            continue
+        if needs_jain and not has_jain_options:
+            continue
+
+        matching.append({
+            "id": r["id"],
+            "name": r["name"],
+            "cuisines": r["cuisines"],
+            "rating": r["rating"],
+            "distanceKm": r["distanceKm"],
+            "avgCostForTwo": r["costForTwo"],
+            "seatingCapacity": r["seatingCapacity"],
+            "servesVeg": serves_veg,
+            "servesNonVeg": serves_non_veg,
+            "hasJainOptions": has_jain_options,
+        })
+
+    matching.sort(key=lambda x: x["distanceKm"])
+    return matching
+
+
+def get_restaurant_details(restaurant_id):
+    """Mirrors: swiggy dineout details <restaurant-id>"""
+    return next((r for r in RESTAURANTS if r["id"] == restaurant_id), None)
+
+
+def check_dineout_slots(restaurant_id, date, guest_count):
+    """
+    Mirrors: swiggy dineout slots <restaurant-id> --date <date>
+
+    Mock logic: a restaurant can host the group at all if it's OPEN and
+    its seatingCapacity covers guest_count — real Swiggy's slots API
+    would check its live per-slot table inventory instead of a single
+    static capacity number, but the RESPONSE SHAPE here (success/slots
+    list) is what matters for a clean swap later, not the exact logic.
+    """
+    restaurant = get_restaurant_details(restaurant_id)
+    if restaurant is None:
+        return {"success": False, "error": "restaurant_not_found", "slots": []}
+
+    if restaurant["availabilityStatus"] != "OPEN":
+        return {"success": True, "restaurant_id": restaurant_id, "date": date, "slots": []}
+
+    if restaurant["seatingCapacity"] == 0 or restaurant["seatingCapacity"] < guest_count:
+        return {"success": True, "restaurant_id": restaurant_id, "date": date, "slots": []}
+
+    # Fixed mock slots — a real integration would return Swiggy's actual
+    # live availability for this restaurant/date, not a hardcoded list.
+    return {
+        "success": True,
+        "restaurant_id": restaurant_id,
+        "date": date,
+        "guest_count": guest_count,
+        "slots": ["19:00", "19:30", "20:00", "20:30", "21:00"],
+    }
+
+
+def book_dineout_table(restaurant_id, date, time, guest_count, special_request=""):
+    """
+    Mirrors: swiggy dineout book <restaurant-id> --date --time --guests N --confirm
+
+    Returns the same shape a real booking confirmation would have
+    (booking_reference, status, etc.) so the Django view/service layer
+    consuming this never needs to change when the mock is swapped for a
+    real Swiggy Dineout MCP call — only this function's insides would change.
+    """
+    slots = check_dineout_slots(restaurant_id, date, guest_count)
+    if time not in slots.get("slots", []):
+        return {"success": False, "error": "slot_not_available"}
+
+    restaurant = get_restaurant_details(restaurant_id)
+    return {
+        "success": True,
+        "booking_reference": f"MOCK-{restaurant_id}-{date}-{time}".replace(":", ""),
+        "restaurant_id": restaurant_id,
+        "restaurant_name": restaurant["name"],
+        "date": date,
+        "time": time,
+        "guest_count": guest_count,
+        "special_request": special_request,
+        "status": "confirmed",
     }
 
 

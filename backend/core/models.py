@@ -27,6 +27,8 @@ class GroqCallLog(models.Model):
         DINEOUT_RANKING = "dineout_ranking", "Dineout Restaurant Ranking"
         SCHEDULING = "scheduling", "Late-Arrival Scheduling Suggestion"
         MERGE_CHECK = "merge_check", "Order Merge Detection"
+        BUDGET_GUARDIAN = "budget_guardian", "Budget Guardian"
+        BUDGET_CHECK = "budget_check", "Budget Guardian Check"
 
     party = models.ForeignKey(
         Party, on_delete=models.CASCADE, related_name="groq_calls", null=True, blank=True
