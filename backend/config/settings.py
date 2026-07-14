@@ -11,11 +11,14 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 import os
 import dj_database_url
+from dotenv import load_dotenv
 from pathlib import Path
+
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+load_dotenv(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -27,7 +30,7 @@ SECRET_KEY = 'django-insecure-f)hmm7n!2bzbqin)o8ye-w7jdgk2e*-st)35$-507#_5izqr-u
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-
+AUTH_USER_MODEL = "account.User"
 
 # Application definition
 
@@ -41,6 +44,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'party',
+    "account",
+    "ai",
+    "core",
+    "order",
 
 ]
 
@@ -127,9 +134,5 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-import dj_database_url
-from dotenv import load_dotenv
-import os
-load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
