@@ -7,8 +7,8 @@ introducing a new one.
 """
 
 
-from rest_framework import PermissionDenied
-from rest_framework.permissions import get_object_or_404
+from rest_framework.exceptions import PermissionDenied
+from django.shortcuts import get_object_or_404
 
 
 from party.models import Party
