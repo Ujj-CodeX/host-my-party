@@ -8,14 +8,13 @@ all orders in a party, and the "host orders on behalf of everyone" path.
 """
 
 from rest_framework import generics, mixins, permissions, status
-from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.generics import get_object_or_404
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from core.permissions import get_owned_party
+from core.permissions import IsValidGuestSession, get_owned_party
 from party.authentication import GuestSessionAuthentication
-from party.models import Guest, Party
+from party.models import Party
+from party.realtime import notify_party
 
 from .models import Booking, Order
 from .serializers import BookingSerializer, OrderCreateSerializer, OrderSerializer
@@ -34,6 +33,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         party = get_owned_party(self.request, self.kwargs["party_code"])
         serializer.save(party=party)
+        notify_party(party.code, "order_created", OrderSerializer(serializer.instance).data)
 
 
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -59,6 +59,10 @@ class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
         # guest-session-authenticated endpoint added in the auth stage,
         # which will set this to GUEST instead.
         serializer.save(last_modified_by=Order.PlacedBy.HOST)
+        notify_party(
+            self.kwargs["party_code"], "order_updated",
+            OrderSerializer(serializer.instance).data,
+        )
 
     def update(self, request, *args, **kwargs):
         # OrderCreateSerializer's own .data is write-shaped (items is
@@ -118,23 +122,16 @@ class BookingDetailView(mixins.CreateModelMixin, generics.RetrieveUpdateAPIView)
 # ---------------------------------------------------------------------------
 
 class GuestOrderCreateView(generics.CreateAPIView):
-    """
-    Base-functionality note: permission_classes is AllowAny because Guest
-    isn't a User (request.user stays AnonymousUser under
-    GuestSessionAuthentication) — the inline isinstance check in
-    perform_create is what actually gates this for now. A proper
-    permission class is tracked as a follow-up, not part of this base pass.
-    """
+    """IsValidGuestSession (core/permissions.py) gates this now — replaces
+    an earlier inline isinstance(request.auth, Guest) check that lived
+    directly in perform_create as a base-functionality stand-in."""
 
     authentication_classes = [GuestSessionAuthentication]
-    permission_classes = [AllowAny]
+    permission_classes = [IsValidGuestSession]
     serializer_class = OrderCreateSerializer
 
     def perform_create(self, serializer):
         guest = self.request.auth
-        if not isinstance(guest, Guest):
-            raise AuthenticationFailed("Valid guest session required.")
-
         # party and guest are both taken from the authenticated session,
         # never from the request body — a guest can only ever place an
         # order for the party their own token belongs to.
@@ -143,4 +140,8 @@ class GuestOrderCreateView(generics.CreateAPIView):
             guest=guest,
             placed_by=Order.PlacedBy.GUEST,
             last_modified_by=Order.PlacedBy.GUEST,
+        )
+        notify_party(
+            guest.party.code, "order_created",
+            OrderSerializer(serializer.instance).data,
         )

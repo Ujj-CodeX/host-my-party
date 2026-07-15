@@ -13,7 +13,6 @@ import json
 from datetime import datetime, timedelta
 from django.core.cache import cache
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.conf import settings
 from groq import Groq
@@ -25,8 +24,9 @@ from .mock_swiggy import (
 )
 from .groq_utils import call_groq, finalize_log
 from core.models import GroqCallLog
+from core.permissions import IsValidGuestSession
 from party.authentication import GuestSessionAuthentication
-from party.models import Guest, Party
+from party.models import Party
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 
@@ -146,7 +146,7 @@ def get_restaurants(request):
 
 @api_view(['GET'])
 @authentication_classes([GuestSessionAuthentication])
-@permission_classes([AllowAny])
+@permission_classes([IsValidGuestSession])
 def guest_get_restaurants(request):
     """
     Guest self-join flow (Section 5.3.2) — restaurant browsing scoped to
@@ -156,17 +156,11 @@ def guest_get_restaurants(request):
     guests and hosts should see identically-filtered results, the only
     difference is where pref/party come from.
 
-    Base-functionality note: permission_classes is AllowAny here because
-    Guest isn't a User (request.user stays AnonymousUser) — the inline
-    isinstance check below is what actually gates this, not a DRF
-    permission class. A proper permission class for this is tracked as a
-    follow-up (see conversation notes), not part of this base pass.
+    IsValidGuestSession (core/permissions.py) does the actual gating now —
+    replaces an earlier inline isinstance(request.auth, Guest) check that
+    lived directly in this view as a base-functionality stand-in.
     """
     guest = request.auth
-    if not isinstance(guest, Guest):
-        return Response(
-            {"detail": "Valid guest session required."}, status=401
-        )
 
     restaurants, widened = _filter_restaurants_via_ai(
         pref=guest.dietary_pref,
