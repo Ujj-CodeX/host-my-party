@@ -12,7 +12,8 @@ a dedicated follow-up task, once the CRUD views work is complete.
 import json
 from datetime import datetime, timedelta
 from django.core.cache import cache
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.conf import settings
 from groq import Groq
@@ -24,7 +25,8 @@ from .mock_swiggy import (
 )
 from .groq_utils import call_groq, finalize_log
 from core.models import GroqCallLog
-from party.models import Party
+from party.authentication import GuestSessionAuthentication
+from party.models import Guest, Party
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 
@@ -46,16 +48,16 @@ def _get_optional_party(request):
 # ─────────────────────────────────────────────
 # 1. RESTAURANT RECOMMENDATIONS 
 # ─────────────────────────────────────────────
-@api_view(['POST'])
-def get_restaurants(request):
+def _filter_restaurants_via_ai(pref, category, guest_name, party=None):
     """
-    Groq reads the mock data, filters by guest pref + category,
-    and returns distance-sorted eligible restaurants with only safe menu items.
-    """
-    pref = request.data.get('pref', 'Any')
-    category = request.data.get('category', None)
-    guest_name = request.data.get('guest_name', 'Guest')
+    Core Groq-filtering logic, shared by the open get_restaurants endpoint
+    and the guest-session-scoped guest_get_restaurants endpoint — same
+    filtering rules regardless of who's asking, just a different source
+    for pref/category/party.
 
+    Returns (restaurants_list, widened_bool) — widened=True means Groq's
+    response didn't parse and the pure-Python fallback filter ran instead.
+    """
     prompt = (
         "You are a Swiggy restaurant filter engine.\n\n"
         f"Guest name: {guest_name}\n"
@@ -78,7 +80,6 @@ def get_restaurants(request):
         "No explanation, no markdown, just the JSON array."
     )
 
-    party = _get_optional_party(request)
     raw, log_entry = call_groq(
         client,
         call_type=GroqCallLog.CallType.RESTAURANT_FILTER,
@@ -117,6 +118,22 @@ def get_restaurants(request):
             error_message=f"JSON parse failed, used Python fallback filter: {exc}",
         )
 
+    return restaurants, widened
+
+
+@api_view(['POST'])
+def get_restaurants(request):
+    """
+    Groq reads the mock data, filters by guest pref + category,
+    and returns distance-sorted eligible restaurants with only safe menu items.
+    """
+    pref = request.data.get('pref', 'Any')
+    category = request.data.get('category', None)
+    guest_name = request.data.get('guest_name', 'Guest')
+
+    party = _get_optional_party(request)
+    restaurants, widened = _filter_restaurants_via_ai(pref, category, guest_name, party=party)
+
     return Response({
         "success": True,
         "pref": pref,
@@ -124,6 +141,46 @@ def get_restaurants(request):
         "widened": widened,
         "restaurants": restaurants,
         "message": f"Found {len(restaurants)} restaurants for {guest_name} ({pref})"
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([GuestSessionAuthentication])
+@permission_classes([AllowAny])
+def guest_get_restaurants(request):
+    """
+    Guest self-join flow (Section 5.3.2) — restaurant browsing scoped to
+    the AUTHENTICATED GUEST'S OWN party and dietary preference, never
+    something the client can pick. Deliberately reuses the exact same
+    filtering logic as get_restaurants (_filter_restaurants_via_ai) —
+    guests and hosts should see identically-filtered results, the only
+    difference is where pref/party come from.
+
+    Base-functionality note: permission_classes is AllowAny here because
+    Guest isn't a User (request.user stays AnonymousUser) — the inline
+    isinstance check below is what actually gates this, not a DRF
+    permission class. A proper permission class for this is tracked as a
+    follow-up (see conversation notes), not part of this base pass.
+    """
+    guest = request.auth
+    if not isinstance(guest, Guest):
+        return Response(
+            {"detail": "Valid guest session required."}, status=401
+        )
+
+    restaurants, widened = _filter_restaurants_via_ai(
+        pref=guest.dietary_pref,
+        category=request.query_params.get("category"),
+        guest_name=guest.name,
+        party=guest.party,
+    )
+
+    return Response({
+        "success": True,
+        "pref": guest.dietary_pref,
+        "widened": widened,
+        "restaurants": restaurants,
+        "message": f"Found {len(restaurants)} restaurants for {guest.name} ({guest.dietary_pref})"
     })
 
 
