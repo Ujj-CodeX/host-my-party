@@ -4,5 +4,6 @@ django-cors-headers
 groq
 python-dotenv
 gunicorn
-psycopg2-binary
-dj-database-url
+channels
+channels-redis
+daphne

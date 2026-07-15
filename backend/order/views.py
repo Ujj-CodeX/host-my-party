@@ -11,8 +11,10 @@ from rest_framework import generics, mixins, permissions, status
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from core.permissions import get_owned_party
+from core.permissions import IsValidGuestSession, get_owned_party
+from party.authentication import GuestSessionAuthentication
 from party.models import Party
+from party.realtime import notify_party
 
 from .models import Booking, Order
 from .serializers import BookingSerializer, OrderCreateSerializer, OrderSerializer
@@ -31,6 +33,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         party = get_owned_party(self.request, self.kwargs["party_code"])
         serializer.save(party=party)
+        notify_party(party.code, "order_created", OrderSerializer(serializer.instance).data)
 
 
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -56,6 +59,10 @@ class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
         # guest-session-authenticated endpoint added in the auth stage,
         # which will set this to GUEST instead.
         serializer.save(last_modified_by=Order.PlacedBy.HOST)
+        notify_party(
+            self.kwargs["party_code"], "order_updated",
+            OrderSerializer(serializer.instance).data,
+        )
 
     def update(self, request, *args, **kwargs):
         # OrderCreateSerializer's own .data is write-shaped (items is
@@ -106,3 +113,35 @@ class BookingDetailView(mixins.CreateModelMixin, generics.RetrieveUpdateAPIView)
     def perform_create(self, serializer):
         party = get_owned_party(self.request, self.kwargs["party_code"])
         serializer.save(party=party)
+
+
+# ---------------------------------------------------------------------------
+# Guest self-service order placement (Section 5.3.2) — the counterpart to
+# party app's join_party. A guest who joined via link places their OWN
+# order here, using their GuestSession token instead of a host's JWT.
+# ---------------------------------------------------------------------------
+
+class GuestOrderCreateView(generics.CreateAPIView):
+    """IsValidGuestSession (core/permissions.py) gates this now — replaces
+    an earlier inline isinstance(request.auth, Guest) check that lived
+    directly in perform_create as a base-functionality stand-in."""
+
+    authentication_classes = [GuestSessionAuthentication]
+    permission_classes = [IsValidGuestSession]
+    serializer_class = OrderCreateSerializer
+
+    def perform_create(self, serializer):
+        guest = self.request.auth
+        # party and guest are both taken from the authenticated session,
+        # never from the request body — a guest can only ever place an
+        # order for the party their own token belongs to.
+        serializer.save(
+            party=guest.party,
+            guest=guest,
+            placed_by=Order.PlacedBy.GUEST,
+            last_modified_by=Order.PlacedBy.GUEST,
+        )
+        notify_party(
+            guest.party.code, "order_created",
+            OrderSerializer(serializer.instance).data,
+        )
