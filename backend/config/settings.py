@@ -22,7 +22,7 @@ ALLOWED_HOSTS = ['*']
 
 # Our custom User (accounts app) replaces Django's built-in one entirely —
 # must be set before any migrations touching auth-related tables run.
-AUTH_USER_MODEL = "accounts.User"
+AUTH_USER_MODEL = "account.User"
 
 # Silences the W042 warning and gives new models a 64-bit primary key by
 # default instead of the older 32-bit AutoField.
@@ -51,9 +51,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
 
-    'accounts',
+    'account',
     'party',
-    'orders',
+    'order',
     'core',
     'ai',
 ]
