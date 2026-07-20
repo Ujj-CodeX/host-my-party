@@ -29,7 +29,7 @@ def _get_user_from_token(raw_token):
     # Local import — avoids importing the User model at module load time,
     # before Django's app registry is guaranteed ready (this module is
     # imported early, from asgi.py).
-    from accounts.models import User
+    from account.models import User
 
     try:
         validated = AccessToken(raw_token)
