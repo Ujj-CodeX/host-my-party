@@ -5,8 +5,7 @@ Relocated as-is from the party app, where it was colliding with the
 party CRUD views. Logic is UNCHANGED here — still uses mock_swiggy data
 directly and Django cache for scheduling, not the Party/Guest/Order/
 GroqCallLog models. Model integration (GroqCallLog audit logging,
-Order.fire_time + Celery-based scheduling instead of cache) is deferred to
-a dedicated follow-up task, once the CRUD views work is complete.
+
 """
 
 import json
