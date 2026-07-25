@@ -121,6 +121,22 @@ def get_restaurants(request):
     party = _get_optional_party(request)
     restaurants, widened = _filter_restaurants_via_ai(pref, category, guest_name, party=party)
 
+    return restaurants, widened
+
+
+@api_view(['POST'])
+def get_restaurants(request):
+    """
+    Groq reads the mock data, filters by guest pref + category,
+    and returns distance-sorted eligible restaurants with only safe menu items.
+    """
+    pref = request.data.get('pref', 'Any')
+    category = request.data.get('category', None)
+    guest_name = request.data.get('guest_name', 'Guest')
+
+    party = _get_optional_party(request)
+    restaurants, widened = _filter_restaurants_via_ai(pref, category, guest_name, party=party)
+
     return Response({
         "success": True,
         "pref": pref,

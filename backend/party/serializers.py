@@ -9,6 +9,23 @@ from account.serializers import UserSummarySerializer
 from .models import Guest, Party
 
 
+class PartyJoinInfoSerializer(serializers.ModelSerializer):
+    """
+    What an UNAUTHENTICATED guest sees on the join-link page, before
+    they've submitted anything (Section 5.3.2: "sees the party's basic
+    info: host name, occasion"). Deliberately minimal — budget, delivery
+    address, and the existing guest list are private to the host and
+    never appear here, even though they're on the same Party row.
+    """
+
+    host_name = serializers.CharField(source="host.name", read_only=True)
+
+    class Meta:
+        model = Party
+        fields = ["code", "host_name", "occasion", "mode", "party_start_time"]
+        read_only_fields = fields
+
+
 class GuestSerializer(serializers.ModelSerializer):
     has_ordered = serializers.SerializerMethodField()
 
@@ -134,4 +151,3 @@ class PartyDetailSerializer(serializers.ModelSerializer):
                 "strategy is required for food_delivery parties."
             )
         return attrs
-    

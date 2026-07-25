@@ -1,18 +1,11 @@
 """
 accounts app — shared helpers for the auth endpoints.
 
-Three repeated jobs live here so every auth view doesn't reimplement them:
+Two repeated jobs live here so every auth view doesn't reimplement them:
 1. Writing an AuthAttemptLog row (Section 4.4) — every signup/login attempt,
    success or failure, gets logged.
 2. Issuing JWT tokens the same way every time — access token in the
    response body, refresh token in an httpOnly cookie (Section 4.3).
-3. Rate limiting (Section 4.4 / roadmap) — reads that same AuthAttemptLog
-   table to block an identifier or IP that's failing repeatedly, rather
-   than standing up separate infrastructure (django-axes, a Redis
-   counter) before any abuse has actually been observed. The roadmap
-   note in Section 7 flags Redis/django-axes as the *next* step once
-   abuse patterns are seen; this is the DB-backed MVP that sits in front
-   of that.
 """
 
 from datetime import timedelta

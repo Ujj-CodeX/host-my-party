@@ -1,4 +1,5 @@
-from django.shortcuts import render
+"""
+accounts app — auth endpoints (Section 4 of the project docs).
 
 # Create your views here.
 """

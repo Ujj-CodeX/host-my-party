@@ -7,12 +7,22 @@ order) needs a separate GuestSession-token authentication class and is
 deferred to the auth-endpoints stage — it's an auth mechanism, not CRUD.
 """
 
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.generics import get_object_or_404
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
 from core.permissions import get_owned_party
 
 from .models import Guest, Party
-from .serializers import GuestSerializer, PartyDetailSerializer, PartyListSerializer
+from .serializers import (
+    GuestSerializer,
+    PartyDetailSerializer,
+    PartyJoinInfoSerializer,
+    PartyListSerializer,
+)
+from .services import issue_guest_session
 
 
 class PartyListCreateView(generics.ListCreateAPIView):
@@ -71,3 +81,38 @@ class GuestDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         party = get_owned_party(self.request, self.kwargs["party_code"])
         return party.guests.all()
+
+
+
+@api_view(["GET", "POST"])
+@permission_classes([AllowAny])
+def join_party(request, party_code):
+    """
+    GET:  the join-link landing page's data — party's public info only.
+    POST: guest submits name + dietary_pref, a Guest row is created, and a
+          session token is issued (Section 5.3.2) — a lightweight,
+          party-scoped credential, not a full account.
+    """
+    party = get_object_or_404(Party, code=party_code)
+
+    if request.method == "GET":
+        return Response(PartyJoinInfoSerializer(party).data)
+
+    serializer = GuestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    # party is injected here, never trusted from the request body — same
+    # principle as every other create() in this codebase (e.g. Booking's
+    # perform_create).
+    guest = serializer.save(party=party)
+
+    raw_token = issue_guest_session(guest)
+
+    return Response(
+        {
+            "guest": GuestSerializer(guest).data,
+            
+            "session_token": raw_token,
+            "expires_in_hours": 12,
+        },
+        status=status.HTTP_201_CREATED,
+    )
