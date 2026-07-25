@@ -1,29 +1,43 @@
 """
 ai app — AI Layer (Section 3.4) + parts of Business Logic Layer (Section 3.3).
 
-Relocated as-is from the party app, where it was colliding with the
-party CRUD views. Logic is UNCHANGED here — still uses mock_swiggy data
-directly and Django cache for scheduling, not the Party/Guest/Order/
-GroqCallLog models. Model integration (GroqCallLog audit logging,
-
+Every Groq call site below goes through call_groq_validated (groq_utils.py),
+which combines: (1) versioned prompt templates (prompt_templates.py), so
+GroqCallLog.prompt_template_version always matches the wording that
+actually produced a response, and (2) strict JSON-schema validation
+(schema_validation.py), so a response that parses as JSON but has the
+wrong shape is treated the same as a parse failure — the existing
+pure-Python fallback runs either way. Fallback logic itself is unchanged
+from before this pass.
 """
 
 import json
 from datetime import datetime, timedelta
-from django.core.cache import cache
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+
 from django.conf import settings
+from django.core.cache import cache
 from groq import Groq
-from .mock_swiggy import (
-    get_mock_restaurants,
-    get_restaurants_for_guest,
-    get_upsell_items_for_guests,
-    RESTAURANTS,
-)
-from .groq_utils import call_groq, finalize_log
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.response import Response
+
 from core.models import GroqCallLog
+from core.permissions import IsValidGuestSession
+from party.authentication import GuestSessionAuthentication
 from party.models import Party
+
+from .groq_utils import call_groq_validated
+from .mock_swiggy import (
+    RESTAURANTS,
+    get_mock_restaurants,
+    get_upsell_items_for_guests,
+)
+from .prompt_templates import (
+    budget_exceeded_prompt,
+    budget_headroom_prompt,
+    merge_check_prompt,
+    restaurant_filter_prompt,
+    scheduling_prompt,
+)
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 
@@ -43,56 +57,33 @@ def _get_optional_party(request):
 
 
 # ─────────────────────────────────────────────
-# 1. RESTAURANT RECOMMENDATIONS 
+# 1. RESTAURANT RECOMMENDATIONS
 # ─────────────────────────────────────────────
-@api_view(['POST'])
-def get_restaurants(request):
+def _filter_restaurants_via_ai(pref, category, guest_name, party=None):
     """
-    Groq reads the mock data, filters by guest pref + category,
-    and returns distance-sorted eligible restaurants with only safe menu items.
+    Core Groq-filtering logic, shared by the open get_restaurants endpoint
+    and the guest-session-scoped guest_get_restaurants endpoint — same
+    filtering rules regardless of who's asking, just a different source
+    for pref/category/party.
+
+    Returns (restaurants_list, widened_bool) — widened=True means Groq's
+    response either didn't parse as JSON or failed schema validation, and
+    the pure-Python fallback filter ran instead.
     """
-    pref = request.data.get('pref', 'Any')
-    category = request.data.get('category', None)
-    guest_name = request.data.get('guest_name', 'Guest')
+    prompt = restaurant_filter_prompt(pref, category, guest_name, json.dumps(RESTAURANTS, indent=2))
 
-    prompt = (
-        "You are a Swiggy restaurant filter engine.\n\n"
-        f"Guest name: {guest_name}\n"
-        f"Guest dietary preference: {pref}\n"
-        f"Food category requested: {category or 'Any'}\n\n"
-        f"Available restaurants and menus:\n{json.dumps(RESTAURANTS, indent=2)}\n\n"
-        "Rules:\n"
-        "1. Filter restaurants that have AT LEAST ONE menu item safe for the guest's preference:\n"
-        "   - Jain: only isJainCompatible=true items\n"
-        "   - Veg or Pure Veg: only isVeg=true items\n"
-        "   - Vegan: only isVeg=true items\n"
-        "   - Diabetic: only isDiabeticFriendly=true items\n"
-        "   - Non-Veg or Any: all items are fine\n"
-        "2. Sort restaurants by distanceKm ascending (nearest first)\n"
-        "3. For each restaurant, only include eligible menu items (filtered by rule 1)\n"
-        "4. If category is not 'Any', prefer restaurants whose cuisines match it, but still include others if no match\n"
-        "5. Only include restaurants with availabilityStatus=OPEN\n\n"
-        "Reply ONLY as a JSON array of restaurants, each with fields: "
-        "id, name, cuisines, rating, deliveryTime, deliveryMins, distanceKm, eligibleMenu (array of safe items with id/name/price/isVeg/isJainCompatible/isDiabeticFriendly). "
-        "No explanation, no markdown, just the JSON array."
-    )
-
-    party = _get_optional_party(request)
-    raw, log_entry = call_groq(
+    restaurants, used_fallback, _log = call_groq_validated(
         client,
         call_type=GroqCallLog.CallType.RESTAURANT_FILTER,
         prompt=prompt,
         request_payload={"pref": pref, "category": category, "guest_name": guest_name},
+        template_key="restaurant_filter",
         party=party,
         max_tokens=2000,
     )
-    try:
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        restaurants = json.loads(clean)
-        widened = False
-        finalize_log(log_entry, success=True, parsed=restaurants)
-    except Exception as exc:
-        # Hard fallback — pure Python filter, no Groq
+
+    if used_fallback or restaurants is None:
+        # Hard fallback — pure Python filter, no Groq.
         restaurants = []
         for r in RESTAURANTS:
             if r['availabilityStatus'] != 'OPEN':
@@ -111,10 +102,24 @@ def get_restaurants(request):
                 restaurants.append({**r, 'eligibleMenu': eligible})
         restaurants.sort(key=lambda x: x['distanceKm'])
         widened = True
-        finalize_log(
-            log_entry, success=False,
-            error_message=f"JSON parse failed, used Python fallback filter: {exc}",
-        )
+    else:
+        widened = False
+
+    return restaurants, widened
+
+
+@api_view(['POST'])
+def get_restaurants(request):
+    """
+    Groq reads the mock data, filters by guest pref + category,
+    and returns distance-sorted eligible restaurants with only safe menu items.
+    """
+    pref = request.data.get('pref', 'Any')
+    category = request.data.get('category', None)
+    guest_name = request.data.get('guest_name', 'Guest')
+
+    party = _get_optional_party(request)
+    restaurants, widened = _filter_restaurants_via_ai(pref, category, guest_name, party=party)
 
     return Response({
         "success": True,
@@ -123,6 +128,36 @@ def get_restaurants(request):
         "widened": widened,
         "restaurants": restaurants,
         "message": f"Found {len(restaurants)} restaurants for {guest_name} ({pref})"
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([GuestSessionAuthentication])
+@permission_classes([IsValidGuestSession])
+def guest_get_restaurants(request):
+    """
+    Guest self-join flow (Section 5.3.2) — restaurant browsing scoped to
+    the AUTHENTICATED GUEST'S OWN party and dietary preference, never
+    something the client can pick. Deliberately reuses the exact same
+    filtering logic as get_restaurants (_filter_restaurants_via_ai) —
+    guests and hosts should see identically-filtered results, the only
+    difference is where pref/party come from.
+    """
+    guest = request.auth
+
+    restaurants, widened = _filter_restaurants_via_ai(
+        pref=guest.dietary_pref,
+        category=request.query_params.get("category"),
+        guest_name=guest.name,
+        party=guest.party,
+    )
+
+    return Response({
+        "success": True,
+        "pref": guest.dietary_pref,
+        "widened": widened,
+        "restaurants": restaurants,
+        "message": f"Found {len(restaurants)} restaurants for {guest.name} ({guest.dietary_pref})"
     })
 
 
@@ -151,17 +186,10 @@ def schedule_late_order(request):
     delivery_mins = restaurant['deliveryMins'] if restaurant else 35
     rest_name = restaurant['name'] if restaurant else 'Unknown'
 
-    # Groq: compute ideal order fire time
-    prompt = (
-        f"Party starts at {party_time_str}. Guest {guest_name} will arrive {late_minutes} minutes late.\n"
-        f"Restaurant delivery time is {delivery_mins} minutes.\n"
-        f"When should we fire the order so food arrives just as {guest_name} arrives?\n"
-        f"Reply with ONLY a JSON object: "
-        f'{{ "fire_at": "HH:MM", "reasoning": "one sentence" }}'
-    )
+    prompt = scheduling_prompt(guest_name, party_time_str, late_minutes, delivery_mins)
 
     party = _get_optional_party(request)
-    raw, log_entry = call_groq(
+    schedule_data, used_fallback, _log = call_groq_validated(
         client,
         call_type=GroqCallLog.CallType.SCHEDULING,
         prompt=prompt,
@@ -169,15 +197,12 @@ def schedule_late_order(request):
             "guest_name": guest_name, "pref": pref, "late_minutes": late_minutes,
             "party_time": party_time_str, "restaurant_id": restaurant_id,
         },
+        template_key="scheduling",
         party=party,
         max_tokens=100,
     )
-    try:
-        # Strip markdown fences if present
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        schedule_data = json.loads(clean)
-        finalize_log(log_entry, success=True, parsed=schedule_data)
-    except Exception as exc:
+
+    if used_fallback or schedule_data is None:
         # Fallback: compute manually
         party_dt = datetime.strptime(party_time_str, "%H:%M")
         arrival_dt = party_dt + timedelta(minutes=late_minutes)
@@ -186,10 +211,6 @@ def schedule_late_order(request):
             "fire_at": fire_dt.strftime("%H:%M"),
             "reasoning": f"Order fires {delivery_mins} mins before {guest_name} arrives."
         }
-        finalize_log(
-            log_entry, success=False,
-            error_message=f"JSON parse failed, used manual fallback: {exc}",
-        )
 
     # Store in cache (key: scheduled_orders list)
     scheduled = cache.get('scheduled_orders', [])
@@ -251,27 +272,12 @@ def budget_check(request):
     affordable_upsells = [u for u in safe_upsells if u['price'] <= remaining]
 
     if remaining < 0:
-        # EXCEEDED — ask Groq what to cut
-        prompt = (
-            f"Party budget is ₹{budget}. Current cart total is ₹{current_total} (over by ₹{abs(remaining)}).\n"
-            f"Current orders: {json.dumps(current_orders)}\n"
-            f"Suggest which items to remove to bring total under budget.\n"
-            f"Reply ONLY as JSON: "
-            f'{{ "status": "exceeded", "exceeded_by": {abs(remaining)}, '
-            f'"remove_suggestions": ["item name 1", "item name 2"] }}'
-        )
+        prompt = budget_exceeded_prompt(budget, current_total, remaining, json.dumps(current_orders))
+        template_key = "budget_exceeded"
     elif remaining >= 200 and affordable_upsells:
-        # HEADROOM — ask Groq to recommend upsells
         upsell_list = [f"{u['name']} (₹{u['price']})" for u in affordable_upsells[:5]]
-        prompt = (
-            f"Party budget is ₹{budget}. Current cart total is ₹{current_total}. "
-            f"Remaining: ₹{remaining}.\n"
-            f"Available add-on items safe for all guests: {', '.join(upsell_list)}\n"
-            f"Recommend 2-3 items to order before checkout.\n"
-            f"Reply ONLY as JSON: "
-            f'{{ "status": "ok", "remaining": {remaining}, '
-            f'"suggestions": [{{"name": "item", "price": 0, "reason": "short reason"}}] }}'
-        )
+        prompt = budget_headroom_prompt(budget, current_total, remaining, upsell_list)
+        template_key = "budget_headroom"
     else:
         return Response({
             "success": True,
@@ -282,7 +288,7 @@ def budget_check(request):
         })
 
     party = _get_optional_party(request)
-    raw, log_entry = call_groq(
+    result, used_fallback, _log = call_groq_validated(
         client,
         call_type=GroqCallLog.CallType.BUDGET_GUARDIAN,
         prompt=prompt,
@@ -290,24 +296,18 @@ def budget_check(request):
             "budget": budget, "current_total": current_total,
             "remaining": remaining, "guest_count": len(guests),
         },
+        template_key=template_key,
         party=party,
         max_tokens=300,
     )
-    try:
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        result = json.loads(clean)
-        finalize_log(log_entry, success=True, parsed=result)
-    except Exception as exc:
+
+    if used_fallback or result is None:
         result = {
             "status": "exceeded" if remaining < 0 else "ok",
             "remaining": remaining,
             "suggestions": [],
             "message": "Could not parse AI response."
         }
-        finalize_log(
-            log_entry, success=False,
-            error_message=f"JSON parse failed: {exc}",
-        )
 
     return Response({"success": True, **result})
 
@@ -339,19 +339,10 @@ def merge_check(request):
         items_str = ", ".join([f"{i.get('qty', 1)}x {i['name']} (₹{i['price']})" for i in o['items']])
         orders_summary.append(f"{o['who']} from {o['restaurant']}: {items_str}")
 
-    prompt = (
-        "These are party food orders:\n"
-        + "\n".join(orders_summary)
-        + "\n\nFind guests ordering from the SAME restaurant who have identical or very similar items. "
-        "Suggest merging their orders into one cart to save on delivery fees.\n"
-        "If no merge opportunity exists, say so.\n"
-        "Reply ONLY as JSON:\n"
-        '{ "has_merges": true/false, "merges": [{ "guests": ["Guest A", "Guest B"], '
-        '"restaurant": "Name", "shared_items": ["Item 1"], "savings_note": "Save ₹X on delivery" }] }'
-    )
+    prompt = merge_check_prompt(orders_summary)
 
     party = _get_optional_party(request)
-    raw, log_entry = call_groq(
+    result, used_fallback, _log = call_groq_validated(
         client,
         call_type=GroqCallLog.CallType.MERGE_CHECK,
         prompt=prompt,
@@ -360,19 +351,13 @@ def merge_check(request):
             "guests": [o.get("who") for o in orders],
             "restaurants": list({o.get("restaurant") for o in orders}),
         },
+        template_key="merge_check",
         party=party,
         max_tokens=400,
     )
-    try:
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        result = json.loads(clean)
-        finalize_log(log_entry, success=True, parsed=result)
-    except Exception as exc:
+
+    if used_fallback or result is None:
         result = {"has_merges": False, "merges": []}
-        finalize_log(
-            log_entry, success=False,
-            error_message=f"JSON parse failed: {exc}",
-        )
 
     return Response({"success": True, **result})
 

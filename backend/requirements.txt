@@ -4,4 +4,9 @@ django-cors-headers
 groq
 python-dotenv
 gunicorn
+channels
+channels-redis
+daphne
 celery
+redis
+jsonschema
