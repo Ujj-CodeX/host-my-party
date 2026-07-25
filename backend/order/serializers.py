@@ -6,6 +6,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .models import Booking, Order, OrderItem
+from .services import compute_fire_time, schedule_order_firing
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -56,7 +57,7 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
         # Money fields, status, last_modified_by, and fire_time are
         # server-computed/controlled by the order-placement service layer
-        # (next stage) — never directly settable via raw client input.
+        # (order/services.py) — never directly settable via raw client input.
         read_only_fields = [
             "id",
             "last_modified_by",
@@ -92,6 +93,14 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     payload and computes item_total server-side from it — the client never
     gets to send a total directly, so there's no way to under-report a bill
     by tampering with the request.
+
+    Also owns the Section 5.3.6 fire_time wiring: on create, if the order
+    belongs to a late guest, fire_time is computed and the order is handed
+    to order/services.py to be scheduled (Celery ETA) or fired immediately.
+    This lives here rather than in the views so both the host-facing
+    OrderListCreateView and the guest-facing GuestOrderCreateView — which
+    both save() through this same serializer — get identical behavior for
+    free, without either view needing to know about scheduling at all.
     """
 
     items = OrderItemWriteSerializer(many=True, write_only=True)
@@ -126,11 +135,21 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         # creation time (Section 5.3.4's last_modified_by tracking starts here).
         validated_data["last_modified_by"] = validated_data.get("placed_by", Order.PlacedBy.HOST)
 
+        party = validated_data.get("party")
+        guest = validated_data.get("guest")
+        restaurant_id = validated_data.get("restaurant_id")
+        validated_data["fire_time"] = compute_fire_time(party, guest, restaurant_id)
+
         with transaction.atomic():
             order = Order.objects.create(**validated_data)
             OrderItem.objects.bulk_create(
                 [OrderItem(order=order, **item) for item in items_data]
             )
+            # on_commit so the Celery task (which may run near-instantly on
+            # a fast broker) never sees a row that isn't actually committed
+            # to the DB yet.
+            transaction.on_commit(lambda: schedule_order_firing(order))
+
         return order
 
     def update(self, instance, validated_data):
@@ -138,6 +157,11 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         Host-override edit (Section 5.3.4): replaces the item list wholesale
         rather than diffing, since partial item edits from the frontend
         already send the full desired cart, not a delta.
+
+        Deliberately does NOT recompute or reschedule fire_time — an edit
+        to an already-scheduled late order (e.g. changing items) shouldn't
+        silently change when it fires; that's a separate future action
+        (explicit reschedule/cancel), not implied by an item edit.
         """
         items_data = validated_data.pop("items", None)
 

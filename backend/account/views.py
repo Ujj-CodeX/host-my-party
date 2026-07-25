@@ -1,6 +1,10 @@
 """
 accounts app — auth endpoints (Section 4 of the project docs).
 
+# Create your views here.
+"""
+accounts app — auth endpoints (Section 4 of the project docs).
+
 Every endpoint here is AllowAny (no login required to reach it) EXCEPT
 profile update and logout, which require an already-valid access token.
 """
@@ -22,12 +26,32 @@ from .serializers import (
     ProfileUpdateSerializer,
     UserSerializer,
 )
-from .services import issue_tokens_response, log_auth_attempt
+from .services import is_rate_limited, issue_tokens_response, log_auth_attempt
 
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def signup_phone(request):
+    phone_number = request.data.get("phone_number", "")
+
+    # Rate limiting (Section 4.4 / roadmap) — checked before touching the
+    # serializer, so a flood of signup attempts against one number/IP
+    # can't even reach validation or DB uniqueness checks.
+    if is_rate_limited(request, identifier=phone_number, attempt_type=AuthAttemptLog.AttemptType.SIGNUP):
+        log_auth_attempt(
+            request,
+            identifier=phone_number,
+            identifier_type=AuthAttemptLog.IdentifierType.PHONE,
+            attempt_type=AuthAttemptLog.AttemptType.SIGNUP,
+            auth_provider=AuthAttemptLog.AuthProvider.LOCAL,
+            status=AuthAttemptLog.Status.FAILED,
+            failure_reason="rate_limited",
+        )
+        return Response(
+            {"detail": "Too many attempts. Please try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
     serializer = PhoneSignupSerializer(data=request.data)
 
     if not serializer.is_valid():
@@ -37,7 +61,7 @@ def signup_phone(request):
         # exactly the pattern Section 4.4's audit table exists to catch.
         log_auth_attempt(
             request,
-            identifier=request.data.get("phone_number", ""),
+            identifier=phone_number,
             identifier_type=AuthAttemptLog.IdentifierType.PHONE,
             attempt_type=AuthAttemptLog.AttemptType.SIGNUP,
             auth_provider=AuthAttemptLog.AuthProvider.LOCAL,
@@ -73,6 +97,24 @@ def login_phone(request):
     serializer.is_valid(raise_exception=True)
     phone_number = serializer.validated_data["phone_number"]
     password = serializer.validated_data["password"]
+
+    # Rate limiting (Section 4.4 / roadmap) — this is the primary
+    # brute-force target, so it's checked before the password is even
+    # compared, not just before issuing tokens.
+    if is_rate_limited(request, identifier=phone_number, attempt_type=AuthAttemptLog.AttemptType.LOGIN):
+        log_auth_attempt(
+            request,
+            identifier=phone_number,
+            identifier_type=AuthAttemptLog.IdentifierType.PHONE,
+            attempt_type=AuthAttemptLog.AttemptType.LOGIN,
+            auth_provider=AuthAttemptLog.AuthProvider.LOCAL,
+            status=AuthAttemptLog.Status.FAILED,
+            failure_reason="rate_limited",
+        )
+        return Response(
+            {"detail": "Too many attempts. Please try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
 
     user = User.objects.filter(phone_number=phone_number).first()
 

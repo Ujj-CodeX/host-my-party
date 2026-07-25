@@ -11,11 +11,16 @@ Two repeated jobs live here so every auth view doesn't reimplement them:
 from datetime import timedelta
 
 from django.conf import settings
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import AuthAttemptLog
 from .serializers import UserSerializer
+
+# Rate limiting (Section 4.4)
+RATE_LIMIT_WINDOW = timedelta(minutes=15)
+RATE_LIMIT_MAX_FAILURES = 5  # per identifier OR per IP within the window
 
 
 def get_client_ip(request):
@@ -52,6 +57,40 @@ def log_auth_attempt(request, *, identifier, identifier_type, attempt_type,
         # a best-effort audit log.
         user_agent=request.META.get("HTTP_USER_AGENT", "")[:255],
     )
+
+
+def is_rate_limited(request, *, identifier, attempt_type):
+    """
+    Blocks if EITHER the identifier or the calling IP has racked up
+    RATE_LIMIT_MAX_FAILURES failed attempts of this type within
+    RATE_LIMIT_WINDOW — checking both angles because brute force can come
+    from either direction (same IP hammering many accounts, or many IPs
+    hammering one account), same reasoning Section 4.4 gives for indexing
+    AuthAttemptLog by both fields independently.
+
+    Deliberately counts FAILED attempts only — a person who gets their
+    password right on the 4th try shouldn't stay locked out because of
+    3 earlier typos.
+    """
+    window_start = timezone.now() - RATE_LIMIT_WINDOW
+    ip = get_client_ip(request)
+
+    identifier_failures = AuthAttemptLog.objects.filter(
+        identifier=identifier,
+        attempt_type=attempt_type,
+        status=AuthAttemptLog.Status.FAILED,
+        timestamp__gte=window_start,
+    ).count()
+    if identifier_failures >= RATE_LIMIT_MAX_FAILURES:
+        return True
+
+    ip_failures = AuthAttemptLog.objects.filter(
+        ip_address=ip,
+        attempt_type=attempt_type,
+        status=AuthAttemptLog.Status.FAILED,
+        timestamp__gte=window_start,
+    ).count()
+    return ip_failures >= RATE_LIMIT_MAX_FAILURES
 
 
 def issue_tokens_response(user, extra_data=None):
