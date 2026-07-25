@@ -110,7 +110,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "payment_method",
             "items",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id" , "party" ]
 
     def validate_items(self, items):
         if not items:
