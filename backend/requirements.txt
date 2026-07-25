@@ -4,3 +4,4 @@ django-cors-headers
 groq
 python-dotenv
 gunicorn
+celery
