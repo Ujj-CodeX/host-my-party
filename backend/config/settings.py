@@ -8,6 +8,7 @@ from pathlib import Path
 
 import dj_database_url
 from dotenv import load_dotenv
+from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -145,7 +146,7 @@ CHANNEL_LAYERS = {
         },
     },
 }
-
+TIME_ZONE = 'UTC'
 # Celery — late-arrival order firing (Section 5.3.6), backed by the same
 # Redis instance CHANNEL_LAYERS already uses.
 CELERY_BROKER_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
@@ -159,7 +160,7 @@ CELERY_TASK_TRACK_STARTED = True
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+
 USE_I18N = True
 USE_TZ = True
 

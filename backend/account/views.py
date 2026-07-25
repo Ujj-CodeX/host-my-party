@@ -1,13 +1,4 @@
-"""
-accounts app — auth endpoints (Section 4 of the project docs).
 
-# Create your views here.
-"""
-accounts app — auth endpoints (Section 4 of the project docs).
-
-Every endpoint here is AllowAny (no login required to reach it) EXCEPT
-profile update and logout, which require an already-valid access token.
-"""
 
 from django.conf import settings
 from google.auth.transport import requests as google_requests

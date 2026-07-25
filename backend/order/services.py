@@ -73,7 +73,7 @@ def fire_order_now(order):
     result = provider.place_order(
         restaurant_id=order.restaurant_id,
         items=[
-            {"external_item_id": i.external_item_id, "name": i.name, "quantity": i.quantity}
+            {"external_item_id": i.external_item_id, "name": i.name, "unit_price": i.unit_price, "quantity": i.quantity}
             for i in order.items.all()
         ],
     )
