@@ -301,7 +301,7 @@
             </a>
           </div>
           <div class="d-flex gap-2">
-            <button class="btn btn-outline-secondary d-none d-md-block px-4">Save Draft</button>
+            <button class="btn btn-outline-secondary d-none d-md-block px-4" @click="savePartyOrders">Save Draft</button>
             <button class="btn btn-orange px-4 py-2 fs-6" @click="openCheckout">
               Proceed to Checkout <i class="bi bi-arrow-right ms-1"></i>
             </button>
@@ -714,7 +714,7 @@
 </template>
 
 <script>
-const API_BASE = 'http://localhost:8000/api'  // adjust to your Django URL
+import { apiRequest } from '@/api/client'
 
 export default {
   name: 'OrchestratorView',
@@ -786,6 +786,9 @@ export default {
 
       whatsappMessage: '',
       pendingLateOrder: null,  // holds order data while waiting for schedule confirm
+      partyCode: this.$route.query.partyCode || '',
+      joinLink: '',
+      saveError: '',
     }
   },
 
@@ -822,6 +825,10 @@ export default {
     }
   },
 
+  async mounted() {
+    await this.ensureParty()
+  },
+
   methods: {
     // ── Helpers ──
     hasOrdered(name) {
@@ -840,6 +847,59 @@ export default {
         'Diabetic': 'Diabetic'
       }
       return map[pref] || 'Any'
+    },
+
+    dietaryValue(pref) {
+      return { Any: 'any', Veg: 'veg', Vegan: 'vegan', 'Non-Veg': 'non_veg', Jain: 'jain', Diabetic: 'diabetic' }[pref] || 'any'
+    },
+
+    async ensureParty() {
+      if (this.partyCode) return
+      try {
+        const party = await apiRequest('/parties/', {
+          method: 'POST',
+          body: {
+            mode: 'food_delivery',
+            strategy: this.strategy,
+            occasion: this.occasion || 'House Party',
+            budget: this.budget,
+            expected_guest_count: this.partySize,
+            delivery_address: `${this.location.address}, ${this.location.city} ${this.location.pin}`,
+            status: 'active'
+          }
+        })
+        this.partyCode = party.code
+        this.joinLink = party.join_link
+        await this.syncHostGuest()
+      } catch (e) {
+        this.saveError = e.message
+      }
+    },
+
+    async syncHostGuest() {
+      if (!this.partyCode || !this.hostName) return
+      const host = this.members.find(m => m.isHost)
+      if (host?.backendId) return
+      try {
+        const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, { method: 'POST', body: { name: this.hostName, dietary_pref: 'any' } })
+        if (host) host.backendId = guest.id
+      } catch {
+        // Guest may already exist from an earlier draft; continue locally.
+      }
+    },
+
+    async persistGuest(member) {
+      if (!this.partyCode || member.backendId) return
+      const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, {
+        method: 'POST',
+        body: {
+          name: member.name,
+          dietary_pref: this.dietaryValue(member.pref),
+          is_late: member.late,
+          late_offset_minutes: member.late ? member.lateMinutes : null
+        }
+      })
+      member.backendId = guest.id
     },
 
     addGuest() {
@@ -880,19 +940,17 @@ export default {
       this.showAiScan = true
 
       try {
-        const resp = await fetch(`${API_BASE}/restaurants/`, {
+        const data = await apiRequest('/ai/restaurants/', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             pref: this.prefKey(this.currentOrderingPref),
             category: category || null,
             guest_name: name
-          })
+          }
         })
-        const data = await resp.json()
         this.scannedRestaurants = data.restaurants || []
         this.scanWidened = data.widened || false
-      } catch (e) {
+      } catch {
         // Fallback: complete restaurant + menu data, filter by pref locally
         const allFallback = [
           {
@@ -1035,19 +1093,17 @@ export default {
       this.showLateSchedule = true
 
       try {
-        const resp = await fetch(`${API_BASE}/schedule-order/`, {
+        const data = await apiRequest('/ai/schedule-late-order/', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             guest_name: orderData.who,
             pref: this.currentOrderingPref,
             late_minutes: this.currentLateMinutes,
             party_time: this.partyTime,
             restaurant_id: orderData.restaurant_id,
             items: orderData.items.map(i => ({ id: i.id, qty: i.qty }))
-          })
+          }
         })
-        const data = await resp.json()
         // Compute arrival time display
         const [h, m] = this.partyTime.split(':').map(Number)
         const arrivalDate = new Date(2000, 0, 1, h, m + this.currentLateMinutes)
@@ -1058,7 +1114,7 @@ export default {
           arrival_time: arrivalStr,
           late_minutes: this.currentLateMinutes
         }
-      } catch (e) {
+      } catch {
         // Fallback computation
         const [h, m] = this.partyTime.split(':').map(Number)
         const arrivalDate = new Date(2000, 0, 1, h, m + this.currentLateMinutes)
@@ -1102,14 +1158,12 @@ export default {
       this.mergeLoading = true
       this.showMerge = true
       try {
-        const resp = await fetch(`${API_BASE}/merge-check/`, {
+        const data = await apiRequest('/ai/merge-check/', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orders: this.orders })
+          body: { orders: this.orders }
         })
-        const data = await resp.json()
         this.mergeData = { has_merges: data.has_merges || false, merges: data.merges || [] }
-      } catch (e) {
+      } catch {
         this.mergeData = { has_merges: false, merges: [] }
       } finally {
         this.mergeLoading = false
@@ -1128,19 +1182,17 @@ export default {
       this.showBudgetGuard = true
 
       try {
-        const resp = await fetch(`${API_BASE}/budget-check/`, {
+        const data = await apiRequest('/ai/budget-check/', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             budget: this.budget,
             current_total: this.billFinalTotal,
             guests: this.members.map(m => ({ name: m.name, pref: m.pref })),
             current_orders: this.orders
-          })
+          }
         })
-        const data = await resp.json()
         this.budgetGuardData = data
-      } catch (e) {
+      } catch {
         // Fallback: simple local check
         this.budgetGuardData = {
           status: this.isOverBudget ? 'exceeded' : 'ok',
@@ -1171,13 +1223,48 @@ export default {
       this.showCheckout = true
     },
 
-    processPayment() {
+    async savePartyOrders() {
+      await this.ensureParty()
+      if (!this.partyCode) return
+      for (const member of this.members.filter(m => !m.isHost)) {
+        await this.persistGuest(member).catch(() => null)
+      }
+      for (const order of this.orders) {
+        if (order.backendId) continue
+        const member = this.members.find(m => m.name === order.who)
+        const items = order.items.map(i => ({
+          external_item_id: String(i.id || i.external_item_id || i.name),
+          name: i.name,
+          unit_price: Number(i.price || i.unit_price || 0),
+          quantity: Number(i.qty || i.quantity || 1),
+          is_veg: Boolean(i.isVeg || i.is_veg),
+          is_jain_compatible: Boolean(i.isJainCompatible || i.is_jain_compatible),
+          is_diabetic_friendly: Boolean(i.isDiabeticFriendly || i.is_diabetic_friendly),
+        }))
+        const saved = await apiRequest(`/parties/${this.partyCode}/orders/`, {
+          method: 'POST',
+          body: {
+            guest: member?.backendId || null,
+            placed_by: 'host',
+            restaurant_id: String(order.restaurant_id || order.restaurant),
+            restaurant_name: order.restaurant,
+            payment_method: order.isLate ? 'online' : null,
+            items
+          }
+        }).catch(() => null)
+        if (saved?.id) order.backendId = saved.id
+      }
+    },
+
+    async processPayment() {
       this.isProcessing = true
+      await this.savePartyOrders()
       setTimeout(() => {
         this.showCheckout = false
         this.generateWhatsAppMessage()
         this.showSuccess = true
-      }, 2000)
+        this.isProcessing = false
+      }, 800)
     },
 
     generateWhatsAppMessage() {

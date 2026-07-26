@@ -14,7 +14,7 @@
                 Handle complex dietary conflicts, asynchronous multi-order delivery timelines, precise budget optimization, and instant group bill-splitting effortlessly down to the last rupee.
               </p>
               <div class="d-flex flex-row gap-3">
-                <button class="btn-swiggy-primary btn-lg px-4 fs-6" @click="showModal = true">
+                <button class="btn-swiggy-primary btn-lg px-4 fs-6" @click="handleStartPlanning">
                   Start Planning <i class="bi bi-arrow-right ms-2"></i>
                 </button>
                 <button class="btn-swiggy-outline btn-lg px-4 fs-6" @click="alert('Demo feature coming soon!')">
@@ -165,6 +165,8 @@
 </template>
 
 <script>
+import { isAuthenticated } from '@/api/client'
+
 export default {
   name: 'LandingView',
   data() {
@@ -186,6 +188,13 @@ export default {
     }
   },
   methods: {
+    handleStartPlanning() {
+      if (!isAuthenticated()) {
+        this.$router.push({ path: '/login', query: { redirect: '/selection' } })
+        return
+      }
+      this.showModal = true
+    },
     handleContinue() {
       if (!this.form.hostName || !this.form.budget || !this.form.guestCount) return
       this.showModal = false
