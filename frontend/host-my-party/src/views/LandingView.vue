@@ -14,7 +14,7 @@
                 Handle complex dietary conflicts, asynchronous multi-order delivery timelines, precise budget optimization, and instant group bill-splitting effortlessly down to the last rupee.
               </p>
               <div class="d-flex flex-row gap-3">
-                <button class="btn-swiggy-primary btn-lg px-4 fs-6" @click="showModal = true">
+                <button class="btn-swiggy-primary btn-lg px-4 fs-6" @click="startPlanning">
                   Start Planning <i class="bi bi-arrow-right ms-2"></i>
                 </button>
                 <button class="btn-swiggy-outline btn-lg px-4 fs-6" @click="alert('Demo feature coming soon!')">
@@ -100,17 +100,6 @@
         </div>
 
         <div>
-          <!-- Host Name -->
-          <div class="mb-3">
-            <label class="form-label form-label-custom">Host Name</label>
-            <input
-              type="text"
-              class="form-control form-control-custom"
-              v-model="form.hostName"
-              placeholder="e.g., Amit Sharma"
-            />
-          </div>
-
           <!-- Budget & Guest Count -->
           <div class="row g-3 mb-4">
             <div class="col-6">
@@ -153,10 +142,10 @@
 
           <button
             class="btn-swiggy-primary w-100 py-3 fs-6"
-            :disabled="!form.hostName || !form.budget || !form.guestCount"
+            :disabled="!form.budget || !form.guestCount"
             @click="handleContinue"
           >
-            Continue To Orchestrator <i class="bi bi-chevron-right ms-1"></i>
+            Continue To Mode Selection <i class="bi bi-chevron-right ms-1"></i>
           </button>
         </div>
       </div>
@@ -165,6 +154,8 @@
 </template>
 
 <script>
+import { isAuthenticated } from '@/api/client'
+
 export default {
   name: 'LandingView',
   data() {
@@ -172,7 +163,6 @@ export default {
       currentState: 'landing',
       showModal: false,
       form: {
-        hostName: '',
         budget: null,
         guestCount: null,
         occasion: 'Birthday'
@@ -186,14 +176,25 @@ export default {
     }
   },
   methods: {
+    startPlanning() {
+      // Party creation needs an owning host (JWT), so we gate here rather
+      // than letting an anonymous person fill the whole form and only
+      // discover they need an account at the very last step.
+      if (!isAuthenticated()) {
+        this.$router.push({ path: '/login', query: { redirect: '/' } })
+        return
+      }
+      this.showModal = true
+    },
     handleContinue() {
-      if (!this.form.hostName || !this.form.budget || !this.form.guestCount) return
+      if (!this.form.budget || !this.form.guestCount) return
       this.showModal = false
-      // Navigate to SelectionView with query params
+      // hostName now comes from the logged-in User (account/serializers.py
+      // UserSerializer), not a free-text field — SelectionView/Orchestrator
+      // read it off the party's nested `host` object instead.
       this.$router.push({
         path: '/selection',
         query: {
-          hostName: this.form.hostName,
           budget: this.form.budget,
           guestCount: this.form.guestCount,
           occasion: this.form.occasion
