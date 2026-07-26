@@ -49,7 +49,7 @@ export default {
 
       try {
         await authApi.login(this.form)
-        this.$router.push(this.$route.query.redirect || '/selection')
+        this.$router.push(this.$route.query.redirect || '/')
       } catch (e) {
         this.error = e.message
       } finally {

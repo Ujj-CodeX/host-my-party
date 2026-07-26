@@ -19,6 +19,8 @@ PROMPT_VERSIONS = {
     "budget_exceeded": "v1",
     "budget_headroom": "v1",
     "merge_check": "v1",
+    "dineout_ranking" : "v1",
+    "whole_sum_optimizer": "v1"
 }
 
 
@@ -89,4 +91,32 @@ def merge_check_prompt(orders_summary_lines):
         "Reply ONLY as JSON:\n"
         '{ "has_merges": true/false, "merges": [{ "guests": ["Guest A", "Guest B"], '
         '"restaurant": "Name", "shared_items": ["Item 1"], "savings_note": "Save ₹X on delivery" }] }'
+    )
+
+
+
+
+def dineout_ranking_prompt(location, guest_count, budget, dietary_prefs, restaurants_json):
+    return (
+        f"User location: {location}\nGuest count: {guest_count}\nBudget: ₹{budget}\n"
+        f"Dietary needs: {', '.join(dietary_prefs) or 'Any'}\n\n"
+        f"Restaurants:\n{restaurants_json}\n\n"
+        "Rank these restaurants best-fit first considering distanceKm (closer to "
+        "user location is better), seatingCapacity vs guest_count, dietary match "
+        "(servesVeg/servesNonVeg/hasJainOptions), and per-head budget fit.\n"
+        "Reply ONLY as JSON array of objects: "
+        '{ "id": "...", "aiReason": "one sentence why this fits" }'
+    )
+
+def whole_sum_optimizer_prompt(guest_count, dietary_splits, budget, restaurants_json):
+    return (
+        f"Total guests: {guest_count}\nDietary splits: {dietary_splits}\nBudget: ₹{budget}\n\n"
+        f"Restaurants:\n{restaurants_json}\n\n"
+        "Pick ONE restaurant and a shared item list (with quantities) that satisfies "
+        "ALL dietary splits simultaneously, stays within budget, and covers guest_count "
+        "people (assume ~1.5 items per person across shared platters).\n"
+        "Reply ONLY as JSON: "
+        '{ "restaurant_id": "...", "restaurant_name": "...", '
+        '"items": [{"item_id": "...", "name": "...", "price": 0, "quantity": 0}], '
+        '"reasoning": "one sentence" }'
     )

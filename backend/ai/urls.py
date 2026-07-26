@@ -12,4 +12,5 @@ urlpatterns = [
     path('dineout/slots/', views.dineout_slots),
     path('dineout/book/', views.dineout_book),
     path('plan-party/', views.plan_party),  # legacy, kept for compatibility
+    path('whole-sum-optimize/', views.whole_sum_optimize),
 ]

@@ -38,6 +38,7 @@ from .prompt_templates import (
     merge_check_prompt,
     restaurant_filter_prompt,
     scheduling_prompt,
+    dineout_ranking_prompt
 )
 
 client = Groq(api_key=settings.GROQ_API_KEY)
@@ -493,3 +494,86 @@ def dineout_book(request):
         special_request=request.data.get('special_request', ''),
     )
     return Response(result)
+
+@api_view(['POST'])
+def dineout_restaurants(request):
+    guest_count = int(request.data.get('guest_count') or 1)
+    budget = float(request.data.get('budget') or 0)
+    max_distance_km = float(request.data.get('max_distance_km') or 10)
+    location = request.data.get('location') or 'Unknown'
+    dietary_prefs = request.data.get('dietary_prefs') or []
+    if isinstance(dietary_prefs, str):
+        dietary_prefs = [dietary_prefs]
+
+    normalized = {str(p).lower().replace('-', '_') for p in dietary_prefs}
+    needs_veg = bool(normalized & {'veg', 'vegan', 'jain'})
+    needs_jain = 'jain' in normalized
+    per_head_budget = budget / guest_count if guest_count else budget
+
+    provider = get_dineout_provider()
+    restaurants = provider.search_restaurants(
+        guest_count=guest_count, needs_veg=needs_veg, needs_jain=needs_jain,
+        max_distance_km=max_distance_km,
+    )
+
+    base = []
+    for r in restaurants:
+        estimated_per_head = r.get('avgCostForTwo', 0) / 2
+        budget_status = 'ok' if not budget or estimated_per_head <= per_head_budget else 'over_budget'
+        base.append({
+            **r,
+            'estimatedPerHead': round(estimated_per_head),
+            'estimatedTotal': round(estimated_per_head * guest_count),
+            'budgetStatus': budget_status,
+            'budgetNote': ('Fits group budget' if budget_status == 'ok'
+                else f"Approx ₹{round((estimated_per_head - per_head_budget) * guest_count)} over budget"),
+        })
+
+    party = _get_optional_party(request)
+    prompt = dineout_ranking_prompt(location, guest_count, budget, dietary_prefs, json.dumps(base, indent=2))
+    ai_ranks, used_fallback, _log = call_groq_validated(
+        client, call_type=GroqCallLog.CallType.DINEOUT_RANKING, prompt=prompt,
+        request_payload={"location": location, "guest_count": guest_count, "budget": budget},
+        template_key="dineout_ranking", party=party, max_tokens=800,
+    )
+
+    reason_map = {item['id']: item['aiReason'] for item in ai_ranks} if not used_fallback and ai_ranks else {}
+    for r in base:
+        r['aiReason'] = reason_map.get(r['id'], 'Matches seating, distance, and dietary needs.')
+
+    if reason_map:
+        order = {item['id']: i for i, item in enumerate(ai_ranks)}
+        base.sort(key=lambda r: order.get(r['id'], 999))
+    else:
+        base.sort(key=lambda item: (item['budgetStatus'] != 'ok', item['distanceKm'], -item['rating']))
+
+    return Response({'success': True, 'restaurants': base, 'widened': used_fallback})
+
+
+from .prompt_templates import whole_sum_optimizer_prompt
+
+@api_view(['POST'])
+def whole_sum_optimize(request):
+    guest_count = int(request.data.get('guest_count') or 1)
+    budget = float(request.data.get('budget') or 0)
+    dietary_splits = request.data.get('dietary_splits') or {}
+
+    party = _get_optional_party(request)
+    prompt = whole_sum_optimizer_prompt(guest_count, dietary_splits, budget, json.dumps(RESTAURANTS, indent=2))
+    result, used_fallback, _log = call_groq_validated(
+        client, call_type=GroqCallLog.CallType.WHOLE_SUM_OPTIMIZER, prompt=prompt,
+        request_payload={"guest_count": guest_count, "budget": budget, "dietary_splits": dietary_splits},
+        template_key="whole_sum_optimizer", party=party, max_tokens=800,
+    )
+
+    if used_fallback or result is None:
+        # fallback: cheapest open restaurant, 1 item x guest_count
+        r = next((r for r in RESTAURANTS if r['availabilityStatus'] == 'OPEN'), RESTAURANTS[0])
+        item = r['menu'][0]
+        result = {
+            "restaurant_id": r['id'], "restaurant_name": r['name'],
+            "items": [{"item_id": item['id'], "name": item['name'], "price": item['price'], "quantity": guest_count}],
+            "reasoning": "Fallback: nearest open restaurant, one item per guest.",
+        }
+
+    return Response({"success": True, "widened": used_fallback, **result})

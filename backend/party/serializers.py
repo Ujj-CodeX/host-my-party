@@ -134,9 +134,7 @@ class PartyDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "host", "code", "guests", "created_at", "updated_at"]
 
     def get_join_link(self, obj):
-        request = self.context.get("request")
-        path = f"/join/{obj.code}"
-        return request.build_absolute_uri(path) if request else path
+     return f"/join/{obj.code}"
 
     def validate(self, attrs):
         mode = attrs.get("mode", getattr(self.instance, "mode", None))

@@ -66,6 +66,24 @@ SCHEMAS = {
             "merges": {"type": "array"},
         },
     },
+
+    GroqCallLog.CallType.DINEOUT_RANKING: {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "required": ["id", "aiReason"],
+        "properties": {"id": {"type": "string"}, "aiReason": {"type": "string"}},
+    },
+    GroqCallLog.CallType.WHOLE_SUM_OPTIMIZER: {
+    "type": "object",
+    "required": ["restaurant_id", "restaurant_name", "items"],
+    "properties": {
+        "restaurant_id": {"type": "string"},
+        "restaurant_name": {"type": "string"},
+        "items": {"type": "array"},
+    },
+},
+},
 }
 
 

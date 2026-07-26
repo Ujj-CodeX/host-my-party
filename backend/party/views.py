@@ -14,6 +14,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from core.permissions import get_owned_party
+from party.realtime import notify_party
 
 from .models import Guest, Party
 from .serializers import (
@@ -106,6 +107,8 @@ def join_party(request, party_code):
     guest = serializer.save(party=party)
 
     raw_token = issue_guest_session(guest)
+
+    notify_party(party.code, "guest_joined", GuestSerializer(guest).data)
 
     return Response(
         {
