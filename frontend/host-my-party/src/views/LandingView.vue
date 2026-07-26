@@ -9,7 +9,7 @@
             <!-- Left Hero Content -->
             <div class="col-lg-6">
               <h1 class="headline">Host parties.<br><span class="text-orange-brand">Not chaos.</span></h1>
-              <h2 class="subheading">AI-powered party orchestration using Swiggy Food, Instamart, and Dineout.</h2>
+              <h2 class="subheading">AI-powered party orchestration using Swiggy Food and Dineout.</h2>
               <p class="supporting-text mt-3 mb-5">
                 Handle complex dietary conflicts, asynchronous multi-order delivery timelines, precise budget optimization, and instant group bill-splitting effortlessly down to the last rupee.
               </p>

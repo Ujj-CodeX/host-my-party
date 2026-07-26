@@ -11,7 +11,7 @@
           <span class="fs-4 text-orange me-2">
             <i class="bi bi-box-seam-fill"></i>
           </span>
-          SwiggyLabs
+          HostMyParty
         </a>
 
         <div class="d-flex align-items-center gap-3">
