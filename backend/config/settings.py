@@ -111,7 +111,7 @@ AUTH_PASSWORD_VALIDATORS = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # VueJS default port
 ]
-
+CORS_ALLOW_CREDENTIALS = True
 
 # DRF — every view authenticates via JWT unless it explicitly overrides
 # authentication_classes (like the GuestSession-authenticated endpoints).
