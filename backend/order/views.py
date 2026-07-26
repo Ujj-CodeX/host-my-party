@@ -1,11 +1,4 @@
-"""
-orders app — host-facing CRUD endpoints for Order and Booking.
 
-Same scope note as party/views.py: guest self-service ordering (a guest
-placing their own order via their join-link session) is deferred to the
-auth-endpoints stage. These endpoints cover the host's dashboard — viewing
-all orders in a party, and the "host orders on behalf of everyone" path.
-"""
 
 from rest_framework import generics, mixins, permissions, status
 from rest_framework.generics import get_object_or_404
@@ -18,6 +11,7 @@ from party.realtime import notify_party
 
 from .models import Booking, Order
 from .serializers import BookingSerializer, OrderCreateSerializer, OrderSerializer
+from .services import compute_fire_time, schedule_order_firing
 
 
 class OrderListCreateView(generics.ListCreateAPIView):
@@ -33,7 +27,22 @@ class OrderListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         party = get_owned_party(self.request, self.kwargs["party_code"])
         serializer.save(party=party)
-        notify_party(party.code, "order_created", OrderSerializer(serializer.instance).data)
+        order = serializer.instance
+
+        # Section 5.3.6 — compute fire_time if this order belongs to a
+        # late guest, then dispatch (Celery-scheduled if late, immediate
+        # otherwise). This was previously built but never called anywhere.
+        fire_time = compute_fire_time(party, order.guest, order.restaurant_id)
+        if fire_time:
+            order.fire_time = fire_time
+            order.save(update_fields=["fire_time"])
+            schedule_order_firing(order)
+            notify_party(party.code, "order_created", OrderSerializer(order).data)
+        else:
+            # Immediate path — schedule_order_firing fires it right away
+            # and sends its own notify_party("order_fired"/... ) call, so
+            # we don't send a second, redundant "order_created" event.
+            schedule_order_firing(order)
 
 
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -141,7 +150,15 @@ class GuestOrderCreateView(generics.CreateAPIView):
             placed_by=Order.PlacedBy.GUEST,
             last_modified_by=Order.PlacedBy.GUEST,
         )
-        notify_party(
-            guest.party.code, "order_created",
-            OrderSerializer(serializer.instance).data,
-        )
+        order = serializer.instance
+
+        fire_time = compute_fire_time(guest.party, guest, order.restaurant_id)
+        if fire_time:
+            order.fire_time = fire_time
+            order.save(update_fields=["fire_time"])
+            schedule_order_firing(order)
+            notify_party(guest.party.code, "order_created", OrderSerializer(order).data)
+        else:
+            # Immediate path — schedule_order_firing fires it right away
+            # and sends its own notify_party call already.
+            schedule_order_firing(order)
