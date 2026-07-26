@@ -1,56 +1,62 @@
 <template>
-  <div class="auth-section d-flex align-items-center justify-content-center">
-    <div class="auth-card">
-      <h3 class="fw-bold mb-1">Create your account</h3>
-      <p class="text-muted mb-4">Host parties. Not chaos.</p>
-
-      <div v-if="error" class="alert alert-danger py-2 small">{{ error }}</div>
+  <div class="auth-section">
+    <div class="auth-card glass-card">
+      <h2 class="fw-bold mb-1">Create your host account</h2>
+      <p class="text-muted mb-4">Save parties, invite guests, and checkout securely.</p>
 
       <form @submit.prevent="submit">
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Full Name</label>
-          <input v-model="name" type="text" class="form-control" required />
+          <label class="form-label fw-semibold">Name</label>
+          <input v-model="form.name" class="form-control form-control-lg" required placeholder="Amit Sharma" />
         </div>
+
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Phone Number</label>
-          <input v-model="phone" type="tel" class="form-control" placeholder="9876543210" required />
+          <label class="form-label fw-semibold">Phone Number</label>
+          <input v-model="form.phone_number" class="form-control form-control-lg" required placeholder="9876543210" />
         </div>
-        <div class="mb-4">
-          <label class="form-label fw-semibold small">Password</label>
-          <input v-model="password" type="password" class="form-control" minlength="8" required />
-          <span class="text-muted small">At least 8 characters.</span>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Password</label>
+          <input v-model="form.password" type="password" minlength="8" class="form-control form-control-lg" required />
         </div>
-        <button class="btn btn-orange w-100 py-2" :disabled="loading">
-          {{ loading ? 'Creating account…' : 'Sign Up' }}
+
+        <div v-if="error" class="alert alert-danger py-2">{{ error }}</div>
+
+        <button class="btn btn-orange w-100 py-3" :disabled="loading">
+          {{ loading ? 'Creating...' : 'Sign up' }}
         </button>
       </form>
 
-      <p class="text-center mt-4 small text-muted">
-        Already have an account? <router-link to="/login">Log in</router-link>
+      <p class="text-center text-muted mt-4 mb-0">
+        Already registered?
+        <router-link to="/login" class="text-orange fw-bold">Login</router-link>
       </p>
     </div>
   </div>
 </template>
 
 <script>
-import { signupPhone } from '@/api/auth'
+import { authApi } from '@/api/client'
 
 export default {
   name: 'SignupView',
   data() {
-    return { name: '', phone: '', password: '', error: '', loading: false }
+    return {
+      form: { name: '', phone_number: '', password: '' },
+      loading: false,
+      error: '',
+    }
   },
   methods: {
     async submit() {
-      this.error = ''
       this.loading = true
+      this.error = ''
+
       try {
-        await signupPhone({ phone_number: this.phone, password: this.password, name: this.name })
-        const redirect = this.$route.query.redirect || '/'
-        this.$router.push(redirect)
+        await authApi.signup(this.form)
+        this.$router.push(this.$route.query.redirect || '/selection')
       } catch (e) {
-        const body = e.body
-        this.error = body ? Object.values(body).flat().join(' ') : 'Signup failed.'
+        this.error = e.data ? Object.values(e.data).flat().join(' ') : e.message
       } finally {
         this.loading = false
       }
@@ -60,9 +66,17 @@ export default {
 </script>
 
 <style scoped>
-.auth-section { min-height: calc(100vh - 72px); background: #f4f5f7; padding: 40px 16px; }
+.auth-section {
+  min-height: calc(100vh - 72px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+  background: #f4f5f7;
+}
 .auth-card {
-  background: white; border-radius: 20px; padding: 2.5rem;
-  width: 100%; max-width: 420px; box-shadow: 0 10px 40px rgba(40,44,63,0.08);
+  max-width: 500px;
+  width: 100%;
+  background: white;
 }
 </style>

@@ -1,50 +1,57 @@
 <template>
-  <div class="auth-section d-flex align-items-center justify-content-center">
-    <div class="auth-card">
-      <h3 class="fw-bold mb-1">Welcome back</h3>
-      <p class="text-muted mb-4">Log in to keep orchestrating your parties.</p>
-
-      <div v-if="error" class="alert alert-danger py-2 small">{{ error }}</div>
+  <div class="auth-section">
+    <div class="auth-card glass-card">
+      <h2 class="fw-bold mb-1">Welcome back</h2>
+      <p class="text-muted mb-4">Login with your phone number to continue planning.</p>
 
       <form @submit.prevent="submit">
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Phone Number</label>
-          <input v-model="phone" type="tel" class="form-control" placeholder="9876543210" required />
+          <label class="form-label fw-semibold">Phone Number</label>
+          <input v-model="form.phone_number" class="form-control form-control-lg" required placeholder="9876543210" />
         </div>
-        <div class="mb-4">
-          <label class="form-label fw-semibold small">Password</label>
-          <input v-model="password" type="password" class="form-control" required />
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Password</label>
+          <input v-model="form.password" type="password" class="form-control form-control-lg" required />
         </div>
-        <button class="btn btn-orange w-100 py-2" :disabled="loading">
-          {{ loading ? 'Logging in…' : 'Log In' }}
+
+        <div v-if="error" class="alert alert-danger py-2">{{ error }}</div>
+
+        <button class="btn btn-orange w-100 py-3" :disabled="loading">
+          {{ loading ? 'Logging in...' : 'Login' }}
         </button>
       </form>
 
-      <p class="text-center mt-4 small text-muted">
-        New here? <router-link to="/signup">Create an account</router-link>
+      <p class="text-center text-muted mt-4 mb-0">
+        New here?
+        <router-link to="/signup" class="text-orange fw-bold">Create account</router-link>
       </p>
     </div>
   </div>
 </template>
 
 <script>
-import { loginPhone } from '@/api/auth'
+import { authApi } from '@/api/client'
 
 export default {
   name: 'LoginView',
   data() {
-    return { phone: '', password: '', error: '', loading: false }
+    return {
+      form: { phone_number: '', password: '' },
+      loading: false,
+      error: '',
+    }
   },
   methods: {
     async submit() {
-      this.error = ''
       this.loading = true
+      this.error = ''
+
       try {
-        await loginPhone({ phone_number: this.phone, password: this.password })
-        const redirect = this.$route.query.redirect || '/'
-        this.$router.push(redirect)
+        await authApi.login(this.form)
+        this.$router.push(this.$route.query.redirect || '/selection')
       } catch (e) {
-        this.error = e.body?.detail || 'Invalid phone number or password.'
+        this.error = e.message
       } finally {
         this.loading = false
       }
@@ -54,9 +61,17 @@ export default {
 </script>
 
 <style scoped>
-.auth-section { min-height: calc(100vh - 72px); background: #f4f5f7; padding: 40px 16px; }
+.auth-section {
+  min-height: calc(100vh - 72px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+  background: #f4f5f7;
+}
 .auth-card {
-  background: white; border-radius: 20px; padding: 2.5rem;
-  width: 100%; max-width: 420px; box-shadow: 0 10px 40px rgba(40,44,63,0.08);
+  max-width: 460px;
+  width: 100%;
+  background: white;
 }
 </style>

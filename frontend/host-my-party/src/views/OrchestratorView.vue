@@ -261,18 +261,21 @@
         </div>
       </div>
 
-      <!-- Bottom Action Bar -->
-      <div class="bottom-action-bar">
-        <div class="container">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <span class="fs-5 fw-bold d-block">₹{{ billFinalTotal }}</span>
-            </div>
-            <div class="d-flex gap-2">
-              <button class="btn btn-orange px-4 py-2 fs-6" @click="openCheckout" :disabled="orders.length === 0">
-                Proceed to Checkout <i class="bi bi-arrow-right ms-1"></i>
-              </button>
-            </div>
+    <!-- Bottom Action Bar -->
+    <div class="bottom-action-bar">
+      <div class="container">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <span class="fs-5 fw-bold d-block">₹{{ billFinalTotal }}</span>
+            <a href="#" class="text-orange text-decoration-none small fw-semibold">
+              View Detailed Bill <i class="bi bi-chevron-up"></i>
+            </a>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary d-none d-md-block px-4" @click="savePartyOrders">Save Draft</button>
+            <button class="btn btn-orange px-4 py-2 fs-6" @click="openCheckout">
+              Proceed to Checkout <i class="bi bi-arrow-right ms-1"></i>
+            </button>
           </div>
         </div>
       </div>
@@ -562,11 +565,7 @@
 </template>
 
 <script>
-import { getParty, updateParty, listGuests, addGuest, updateGuest, removeGuest, listOrders, createOrder } from '@/api/party'
-import { getRestaurants, scheduleLateOrder, mergeCheck, budgetCheck } from '@/api/ai'
-
-const PREF_TO_CODE = { Any: 'any', Veg: 'veg', 'Non-Veg': 'non_veg', Vegan: 'vegan', Jain: 'jain', Diabetic: 'diabetic' }
-const CODE_TO_PREF = Object.fromEntries(Object.entries(PREF_TO_CODE).map(([k, v]) => [v, k]))
+import { apiRequest } from '@/api/client'
 
 export default {
   name: 'OrchestratorView',
@@ -629,8 +628,10 @@ export default {
       tempMenuSelection: [],
 
       whatsappMessage: '',
-      pendingOrderPayload: null,
-      copied: false,
+      pendingLateOrder: null,  // holds order data while waiting for schedule confirm
+      partyCode: this.$route.query.partyCode || '',
+      joinLink: '',
+      saveError: '',
     }
   },
 
@@ -655,6 +656,10 @@ export default {
     const code = this.$route.query.code
     if (!code) { this.$router.push('/selection'); return }
     await this.loadParty(code)
+  },
+
+  async mounted() {
+    await this.ensureParty()
   },
 
   methods: {
@@ -695,19 +700,61 @@ export default {
       setTimeout(() => { this.linkCopied = false }, 2000)
     },
 
-    // ── Guests ──
-    hasOrdered(memberId) {
-      return this.orders.some(o => (memberId === null ? o.guest === null : o.guest === memberId))
-    },
-    getScheduledOrder(memberId) {
-      return this.orders.find(o => o.guest === memberId && o.status === 'scheduled') || null
-    },
-    formatFireTime(iso) {
-      if (!iso) return ''
-      return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    dietaryValue(pref) {
+      return { Any: 'any', Veg: 'veg', Vegan: 'vegan', 'Non-Veg': 'non_veg', Jain: 'jain', Diabetic: 'diabetic' }[pref] || 'any'
     },
 
-    addGuestOpen() {
+    async ensureParty() {
+      if (this.partyCode) return
+      try {
+        const party = await apiRequest('/parties/', {
+          method: 'POST',
+          body: {
+            mode: 'food_delivery',
+            strategy: this.strategy,
+            occasion: this.occasion || 'House Party',
+            budget: this.budget,
+            expected_guest_count: this.partySize,
+            delivery_address: `${this.location.address}, ${this.location.city} ${this.location.pin}`,
+            status: 'active'
+          }
+        })
+        this.partyCode = party.code
+        this.joinLink = party.join_link
+        await this.syncHostGuest()
+      } catch (e) {
+        this.saveError = e.message
+      }
+    },
+
+    async syncHostGuest() {
+      if (!this.partyCode || !this.hostName) return
+      const host = this.members.find(m => m.isHost)
+      if (host?.backendId) return
+      try {
+        const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, { method: 'POST', body: { name: this.hostName, dietary_pref: 'any' } })
+        if (host) host.backendId = guest.id
+      } catch {
+        // Guest may already exist from an earlier draft; continue locally.
+      }
+    },
+
+    async persistGuest(member) {
+      if (!this.partyCode || member.backendId) return
+      const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, {
+        method: 'POST',
+        body: {
+          name: member.name,
+          dietary_pref: this.dietaryValue(member.pref),
+          is_late: member.late,
+          late_offset_minutes: member.late ? member.lateMinutes : null
+        }
+      })
+      member.backendId = guest.id
+    },
+
+    addGuest() {
+      // Reset form and open modal
       this.newGuest = { name: '', pref: 'Any', late: false, lateMinutes: 30 }
       this.guestError = ''
       this.showAddGuest = true
@@ -773,16 +820,99 @@ export default {
       this.showAiScan = true
 
       try {
-        const data = await getRestaurants({
-          pref: this.currentOrderingPref,
-          category: category || null,
-          guest_name: name,
-          party_id: this.party.id,
+        const data = await apiRequest('/ai/restaurants/', {
+          method: 'POST',
+          body: {
+            pref: this.prefKey(this.currentOrderingPref),
+            category: category || null,
+            guest_name: name
+          }
         })
         this.scannedRestaurants = data.restaurants || []
         this.scanWidened = data.widened || false
       } catch {
-        this.scannedRestaurants = []
+        // Fallback: complete restaurant + menu data, filter by pref locally
+        const allFallback = [
+          {
+            id: 'rest_001', name: 'Punjab Grill', distanceKm: 1.2, rating: 4.3,
+            deliveryTime: '30-35 mins', deliveryMins: 33, cuisines: ['North Indian', 'Punjabi'],
+            menu: [
+              { id: 'item_001', name: 'Paneer Butter Masala', price: 280, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
+              { id: 'item_002', name: 'Dal Makhani', price: 220, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_003', name: 'Chicken Tikka', price: 320, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_004', name: 'Tandoori Roti', price: 40, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_005', name: 'Jeera Rice', price: 160, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
+            ]
+          },
+          {
+            id: 'rest_002', name: 'Barbeque Nation', distanceKm: 2.8, rating: 4.5,
+            deliveryTime: '45-50 mins', deliveryMins: 48, cuisines: ['Barbecue', 'Multi-Cuisine'],
+            menu: [
+              { id: 'item_007', name: 'Veg Seekh Kebab', price: 260, qty: 0, isVeg: true, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_008', name: 'Mutton Seekh Kebab', price: 380, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_009', name: 'Paneer Tikka', price: 300, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_010', name: 'Fish Tikka', price: 350, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+            ]
+          },
+          {
+            id: 'rest_003', name: 'Satvic Jain Kitchen', distanceKm: 0.9, rating: 4.1,
+            deliveryTime: '25-30 mins', deliveryMins: 28, cuisines: ['Jain', 'Pure Veg'],
+            menu: [
+              { id: 'item_011', name: 'Jain Dal Baati', price: 240, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
+              { id: 'item_012', name: 'Jain Paneer Sabzi', price: 210, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_013', name: 'Jain Khichdi', price: 150, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_014', name: 'Jain Chapati (4 pcs)', price: 60, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+            ]
+          },
+          {
+            id: 'rest_004', name: 'Green Bowl Vegan Co.', distanceKm: 1.8, rating: 4.2,
+            deliveryTime: '35-40 mins', deliveryMins: 38, cuisines: ['Vegan', 'Healthy'],
+            menu: [
+              { id: 'item_015', name: 'Vegan Buddha Bowl', price: 290, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_016', name: 'Tofu Stir Fry', price: 260, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_017', name: 'Multigrain Wrap', price: 180, qty: 0, isVeg: true, isJainCompatible: false, isDiabeticFriendly: true },
+            ]
+          },
+          {
+            id: 'rest_005', name: 'Spice Route Non-Veg', distanceKm: 3.5, rating: 4.4,
+            deliveryTime: '40-45 mins', deliveryMins: 42, cuisines: ['Mughlai', 'Non-Veg'],
+            menu: [
+              { id: 'item_019', name: 'Butter Chicken', price: 340, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: false },
+              { id: 'item_020', name: 'Mutton Biryani', price: 420, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: false },
+              { id: 'item_021', name: 'Egg Curry', price: 220, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_022', name: 'Rumali Roti', price: 35, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+            ]
+          },
+          {
+            id: 'rest_006', name: 'DiabEats Health Kitchen', distanceKm: 2.2, rating: 4.0,
+            deliveryTime: '30-35 mins', deliveryMins: 32, cuisines: ['Healthy', 'Low GI'],
+            menu: [
+              { id: 'item_023', name: 'Millets Bowl', price: 200, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+              { id: 'item_024', name: 'Grilled Chicken Salad', price: 280, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
+              { id: 'item_025', name: 'Quinoa Khichdi', price: 220, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
+            ]
+          },
+        ]
+
+        // ── Correct preference filtering ──
+        const prefLower = (this.currentOrderingPref || 'any').toLowerCase().trim()
+
+        const filterMenu = (menu) => {
+          if (prefLower === 'jain') return menu.filter(i => i.isJainCompatible)
+          if (prefLower === 'veg' || prefLower === 'pure veg') return menu.filter(i => i.isVeg)
+          if (prefLower === 'vegan') return menu.filter(i => i.isVeg)
+          if (prefLower === 'diabetic') return menu.filter(i => i.isDiabeticFriendly)
+          // Non-Veg, Any → all items allowed
+          return menu
+        }
+
+        this.scannedRestaurants = allFallback
+          .map(r => {
+            const eligible = filterMenu(r.menu)
+            return eligible.length > 0 ? { ...r, eligibleMenu: eligible } : null
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.distanceKm - b.distanceKm)
       } finally {
         this.isScanning = false
       }
@@ -861,21 +991,39 @@ export default {
       this.lateScheduleLoading = true
       this.showLateSchedule = true
       try {
-        const data = await scheduleLateOrder({
-          guest_name: this.currentOrderingFor,
-          pref: this.currentOrderingPref,
-          late_minutes: this.currentLateMinutes,
-          party_time: this.party.party_start_time
-            ? new Date(this.party.party_start_time).toTimeString().slice(0, 5)
-            : '20:00',
-          restaurant_id: this.tempRestaurantObj?.id,
-          items: this.tempMenuSelection.filter(i => i.qty > 0).map(i => ({ id: i.id, qty: i.qty })),
+        const data = await apiRequest('/ai/schedule-late-order/', {
+          method: 'POST',
+          body: {
+            guest_name: orderData.who,
+            pref: this.currentOrderingPref,
+            late_minutes: this.currentLateMinutes,
+            party_time: this.partyTime,
+            restaurant_id: orderData.restaurant_id,
+            items: orderData.items.map(i => ({ id: i.id, qty: i.qty }))
+          }
         })
-        this.lateScheduleData = { ...data, late_minutes: this.currentLateMinutes }
-      } catch {
+        // Compute arrival time display
+        const [h, m] = this.partyTime.split(':').map(Number)
+        const arrivalDate = new Date(2000, 0, 1, h, m + this.currentLateMinutes)
+        const arrivalStr = `${String(arrivalDate.getHours()).padStart(2,'0')}:${String(arrivalDate.getMinutes()).padStart(2,'0')}`
+
         this.lateScheduleData = {
-          guest_name: this.currentOrderingFor, late_minutes: this.currentLateMinutes,
-          fire_at: '—', reasoning: 'Could not reach the scheduling service.', delivery_mins: this.tempETA,
+          ...data,
+          arrival_time: arrivalStr,
+          late_minutes: this.currentLateMinutes
+        }
+      } catch {
+        // Fallback computation
+        const [h, m] = this.partyTime.split(':').map(Number)
+        const arrivalDate = new Date(2000, 0, 1, h, m + this.currentLateMinutes)
+        const fireDate = new Date(2000, 0, 1, arrivalDate.getHours(), arrivalDate.getMinutes() - (this.tempETA || 35))
+        this.lateScheduleData = {
+          guest_name: orderData.who,
+          late_minutes: this.currentLateMinutes,
+          fire_at: `${String(fireDate.getHours()).padStart(2,'0')}:${String(fireDate.getMinutes()).padStart(2,'0')}`,
+          reasoning: `Order fires ${this.tempETA} mins before ${orderData.who} arrives.`,
+          delivery_mins: this.tempETA,
+          arrival_time: `${String(arrivalDate.getHours()).padStart(2,'0')}:${String(arrivalDate.getMinutes()).padStart(2,'0')}`
         }
       } finally {
         this.lateScheduleLoading = false
@@ -912,7 +1060,10 @@ export default {
       this.mergeLoading = true
       this.showMerge = true
       try {
-        const data = await mergeCheck({ orders: this.ordersForAi() })
+        const data = await apiRequest('/ai/merge-check/', {
+          method: 'POST',
+          body: { orders: this.orders }
+        })
         this.mergeData = { has_merges: data.has_merges || false, merges: data.merges || [] }
       } catch {
         this.mergeData = { has_merges: false, merges: [] }
@@ -928,14 +1079,18 @@ export default {
       this.budgetGuardLoading = true
       this.showBudgetGuard = true
       try {
-        const data = await budgetCheck({
-          budget: this.budget,
-          current_total: this.billFinalTotal,
-          guests: this.guests.map(m => ({ name: m.name, pref: this.prefLabel(m.dietary_pref) })),
-          current_orders: this.ordersForAi(),
+        const data = await apiRequest('/ai/budget-check/', {
+          method: 'POST',
+          body: {
+            budget: this.budget,
+            current_total: this.billFinalTotal,
+            guests: this.members.map(m => ({ name: m.name, pref: m.pref })),
+            current_orders: this.orders
+          }
         })
         this.budgetGuardData = data
       } catch {
+        // Fallback: simple local check
         this.budgetGuardData = {
           status: this.isOverBudget ? 'exceeded' : 'ok',
           remaining: this.budgetLeft, exceeded_by: this.isOverBudget ? Math.abs(this.budgetLeft) : 0, suggestions: [],
@@ -947,13 +1102,48 @@ export default {
 
     proceedToPayment() { this.showBudgetGuard = false; this.isProcessing = false; this.showCheckout = true },
 
-    processPayment() {
+    async savePartyOrders() {
+      await this.ensureParty()
+      if (!this.partyCode) return
+      for (const member of this.members.filter(m => !m.isHost)) {
+        await this.persistGuest(member).catch(() => null)
+      }
+      for (const order of this.orders) {
+        if (order.backendId) continue
+        const member = this.members.find(m => m.name === order.who)
+        const items = order.items.map(i => ({
+          external_item_id: String(i.id || i.external_item_id || i.name),
+          name: i.name,
+          unit_price: Number(i.price || i.unit_price || 0),
+          quantity: Number(i.qty || i.quantity || 1),
+          is_veg: Boolean(i.isVeg || i.is_veg),
+          is_jain_compatible: Boolean(i.isJainCompatible || i.is_jain_compatible),
+          is_diabetic_friendly: Boolean(i.isDiabeticFriendly || i.is_diabetic_friendly),
+        }))
+        const saved = await apiRequest(`/parties/${this.partyCode}/orders/`, {
+          method: 'POST',
+          body: {
+            guest: member?.backendId || null,
+            placed_by: 'host',
+            restaurant_id: String(order.restaurant_id || order.restaurant),
+            restaurant_name: order.restaurant,
+            payment_method: order.isLate ? 'online' : null,
+            items
+          }
+        }).catch(() => null)
+        if (saved?.id) order.backendId = saved.id
+      }
+    },
+
+    async processPayment() {
       this.isProcessing = true
+      await this.savePartyOrders()
       setTimeout(() => {
         this.showCheckout = false
         this.generateWhatsAppMessage()
         this.showSuccess = true
-      }, 1200)
+        this.isProcessing = false
+      }, 800)
     },
 
     generateWhatsAppMessage() {

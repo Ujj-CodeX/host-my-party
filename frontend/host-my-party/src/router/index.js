@@ -18,7 +18,6 @@ const router = createRouter({
     { path: '/selection', component: SelectionView, meta: { requiresAuth: true } },
     { path: '/orchestrator', component: OrchestratorView, meta: { requiresAuth: true } },
     { path: '/dineout', component: DineoutView, meta: { requiresAuth: true } },
-    // Public guest self-join flow (Section 5.3.2) — party's shareable link.
     { path: '/join/:code', component: JoinPartyView, props: true },
     { path: '/guest-order', component: GuestOrderView },
   ],

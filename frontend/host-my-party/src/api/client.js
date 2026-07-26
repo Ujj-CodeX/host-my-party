@@ -1,128 +1,124 @@
-// src/api/client.js
-//
-// Single place that knows how to talk to the Django backend. Every view
-// should go through apiFetch() / guestFetch() instead of calling fetch()
-// directly, so auth headers, the refresh-token dance, and error shape are
-// handled consistently everywhere (previously every view rolled its own
-// fetch() + try/catch with a hardcoded API_BASE).
-
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api'
-export const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000'
-
-const ACCESS_TOKEN_KEY = 'hmp_access_token'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
+const ACCESS_TOKEN_KEY = 'hostMyParty.accessToken'
+const USER_KEY = 'hostMyParty.user'
+const GUEST_SESSION_KEY = 'hostMyParty.guestSession'
 
 export function getAccessToken() {
   return localStorage.getItem(ACCESS_TOKEN_KEY)
 }
 
-export function setAccessToken(token) {
-  if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token)
-  else localStorage.removeItem(ACCESS_TOKEN_KEY)
-}
-
 export function isAuthenticated() {
-  return !!getAccessToken()
+  return Boolean(getAccessToken())
 }
 
-class ApiError extends Error {
-  constructor(message, status, body) {
-    super(message)
-    this.status = status
-    this.body = body
+export function getCurrentUser() {
+  const raw = localStorage.getItem(USER_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
   }
 }
 
-async function doFetch(path, options = {}) {
-  const headers = { ...(options.headers || {}) }
-  const hasBody = options.body !== undefined && !(options.body instanceof FormData)
-  if (hasBody && !headers['Content-Type']) headers['Content-Type'] = 'application/json'
+export function setAuthSession(data) {
+  if (data?.access) localStorage.setItem(ACCESS_TOKEN_KEY, data.access)
+  if (data?.user) localStorage.setItem(USER_KEY, JSON.stringify(data.user))
+}
+
+export function clearAuthSession() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
+}
+
+export function setGuestSession(data) {
+  localStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(data))
+}
+
+export function getGuestSession() {
+  const raw = localStorage.getItem(GUEST_SESSION_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export function clearGuestSession() {
+  localStorage.removeItem(GUEST_SESSION_KEY)
+}
+
+function getAuthHeader(guest) {
+  if (guest) {
+    const token = getGuestSession()?.session_token
+    return token ? { Authorization: `GuestSession ${token}` } : {}
+  }
 
   const token = getAccessToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
-  return fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-    credentials: 'include', // needed so the httpOnly refresh_token cookie travels
+function buildHeaders(headers = {}, guest = false) {
+  return {
+    'Content-Type': 'application/json',
+    ...getAuthHeader(guest),
+    ...headers,
+  }
+}
+
+function parseErrorMessage(data) {
+  if (!data) return 'Request failed'
+  if (data.detail) return data.detail
+  if (Array.isArray(data.non_field_errors)) return data.non_field_errors[0]
+
+  const firstFieldError = Object.values(data).flat().find(Boolean)
+  return firstFieldError || 'Request failed'
+}
+
+export async function apiRequest(path, { method = 'GET', body, headers, guest = false } = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    credentials: 'include',
+    headers: buildHeaders(headers, guest),
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   })
+
+  const text = await response.text()
+  const data = text ? JSON.parse(text) : null
+
+  if (!response.ok) {
+    const error = new Error(parseErrorMessage(data))
+    error.status = response.status
+    error.data = data
+    throw error
+  }
+
+  return data
 }
 
-let refreshInFlight = null
-
-async function tryRefresh() {
-  if (!refreshInFlight) {
-    refreshInFlight = fetch(`${API_BASE}/auth/refresh/`, {
-      method: 'POST',
-      credentials: 'include',
+export const authApi = {
+  login(payload) {
+    return apiRequest('/auth/login/phone/', { method: 'POST', body: payload }).then((data) => {
+      setAuthSession(data)
+      return data
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('refresh_failed')
-        const data = await res.json()
-        setAccessToken(data.access)
-        return data.access
-      })
-      .finally(() => {
-        refreshInFlight = null
-      })
-  }
-  return refreshInFlight
+  },
+  signup(payload) {
+    return apiRequest('/auth/signup/phone/', { method: 'POST', body: payload }).then((data) => {
+      setAuthSession(data)
+      return data
+    })
+  },
+  async logout() {
+    try {
+      await apiRequest('/auth/logout/', { method: 'POST' })
+    } finally {
+      clearAuthSession()
+    }
+  },
 }
 
-/**
- * apiFetch — for every JWT-authenticated (or AllowAny) host-facing endpoint.
- * Automatically retries once after a silent refresh if the access token
- * has expired (401), so callers don't need to think about token lifetime.
- */
-export async function apiFetch(path, options = {}) {
-  let res = await doFetch(path, options)
-
-  if (res.status === 401 && getAccessToken()) {
-    try {
-      await tryRefresh()
-      res = await doFetch(path, options)
-    } catch {
-      setAccessToken(null)
-    }
-  }
-
-  if (!res.ok) {
-    let body = null
-    try {
-      body = await res.json()
-    } catch {
-      /* non-JSON error body, ignore */
-    }
-    const message = body?.detail || JSON.stringify(body) || `Request failed (${res.status})`
-    throw new ApiError(message, res.status, body)
-  }
-
-  if (res.status === 204) return null
-  return res.json()
-}
-
-/**
- * guestFetch — for the guest-session-token endpoints (join flow / guest
- * ordering). Uses the "GuestSession <token>" scheme instead of "Bearer",
- * per party/authentication.py.
- */
-export async function guestFetch(path, guestToken, options = {}) {
-  const headers = { ...(options.headers || {}), Authorization: `GuestSession ${guestToken}` }
-  const hasBody = options.body !== undefined
-  if (hasBody && !headers['Content-Type']) headers['Content-Type'] = 'application/json'
-
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
-
-  if (!res.ok) {
-    let body = null
-    try {
-      body = await res.json()
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(body?.detail || `Request failed (${res.status})`, res.status, body)
-  }
-  if (res.status === 204) return null
-  return res.json()
-}
-
-export { ApiError }
+export { API_BASE }
