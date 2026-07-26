@@ -11,10 +11,13 @@
           <span class="px-3 py-1 ai-pill fw-medium d-none d-sm-inline-block">
             <i class="bi bi-cpu-fill me-1"></i> AI Engine Active
           </span>
-          <div class="rounded-circle bg-light d-flex align-items-center justify-content-center border"
-            style="width: 40px; height: 40px; cursor: pointer;">
+          <button v-if="!isAuthed" class="btn btn-sm btn-outline-orange px-3" @click="$router.push('/login')">
+            Login
+          </button>
+          <button v-else class="rounded-circle bg-light d-flex align-items-center justify-content-center border profile-button"
+            title="Open profile" @click="$router.push('/profile')">
             <i class="bi bi-person-fill text-muted"></i>
-          </div>
+          </button>
         </div>
       </div>
     </nav>
@@ -30,8 +33,18 @@
 </template>
 
 <script>
+import { isAuthenticated } from '@/api/client'
+
 export default {
-  name: 'App'
+  name: 'App',
+  data() {
+    return { isAuthed: isAuthenticated() }
+  },
+  watch: {
+    $route() {
+      this.isAuthed = isAuthenticated()
+    }
+  }
 }
 </script>
 
@@ -82,6 +95,12 @@ body {
   cursor: pointer;
 }
 .btn-outline-orange:hover { background-color: var(--brand-orange); color: white; }
+
+.profile-button {
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+}
 
 .swiggy-nav {
   background: rgba(255, 255, 255, 0.98);

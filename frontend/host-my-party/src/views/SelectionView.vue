@@ -57,7 +57,7 @@
 
         <!-- Card 2: Dineout -->
         <div class="col-lg-4 col-md-6">
-          <div class="mode-card card-dineout" style="opacity:0.75; cursor:not-allowed;">
+          <div class="mode-card card-dineout" @click="selectMode('dineout')">
             <div>
               <div class="d-flex justify-content-between align-items-start">
                 <div class="icon-box" style="background:#f5ecff; color:#8f00ff">
@@ -81,7 +81,7 @@
               </div>
             </div>
             <span class="badge-footer-tag">
-              <i class="bi bi-award me-1 text-warning"></i> Coming Soon
+              <i class="bi bi-award me-1 text-warning"></i> Reserve with Dineout
             </span>
           </div>
         </div>
@@ -140,9 +140,9 @@ export default {
   },
   methods: {
     selectMode(mode) {
-      if (mode === 'food') {
+      if (mode === 'food' || mode === 'dineout') {
         this.$router.push({
-          path: '/orchestrator',
+          path: mode === 'food' ? '/orchestrator' : '/dineout',
           query: {
             hostName: this.hostName,
             budget: this.budget,
