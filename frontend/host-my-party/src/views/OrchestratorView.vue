@@ -204,22 +204,8 @@
                 <div v-if="orders.length === 0" class="text-muted text-center py-3">
                   No orders placed yet. Start orchestrating!
                 </div>
-                <div v-for="order in orders" :key="order.id" class="mb-3 border-bottom pb-2">
-                  <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="fw-bold text-dark">
-                      <i class="bi bi-person-fill text-muted"></i> {{ order.guest_name || hostName }}
-                      <span v-if="order.status === 'scheduled'" class="badge bg-warning text-dark ms-1" style="font-size:0.65rem;">
-                        <i class="bi bi-clock"></i> Late
-                      </span>
-                    </span>
-                    <span class="fw-bold">₹{{ order.total }}</span>
-                  </div>
-                  <div class="text-muted" style="font-size:0.75rem;">
-                    <i class="bi bi-shop"></i> {{ order.restaurant_name }}
-                  </div>
-                  <div class="text-muted fst-italic" style="font-size:0.75rem;">
-                    {{ order.items.map(i => `${i.quantity}x ${i.name}`).join(', ') }}
-                  </div>
+                <div class="text-muted fst-italic" style="font-size:0.75rem;">
+                  {{ orderItemsLabel(order) }}
                 </div>
               </div>
 
@@ -743,6 +729,52 @@ export default {
       }
     },
 
+  async mounted() {
+    await this.ensureParty()
+  },
+
+  methods: {
+    // ── Helpers ──
+    hasOrdered(name) {
+      return this.orders.some(o => o.who === name)
+    },
+
+    async ensureParty() {
+      if (this.partyCode) return
+      try {
+        const party = await apiRequest('/parties/', {
+          method: 'POST',
+          body: {
+            mode: 'food_delivery',
+            strategy: this.strategy,
+            occasion: this.occasion || 'House Party',
+            budget: this.budget,
+            expected_guest_count: this.partySize,
+            delivery_address: `${this.location.address}, ${this.location.city} ${this.location.pin}`,
+            status: 'active'
+          }
+        })
+        this.partyCode = party.code
+        this.joinLink = party.join_link
+        await this.syncHostGuest()
+      } catch (e) {
+        this.saveError = e.message
+      }
+    },
+    orderItemsLabel(order) {
+      return order.items.map(item => `${item.qty}x ${item.name}`).join(', ')
+    },
+    prefKey(pref) {
+      const map = {
+        'Any': 'Any', 'any': 'Any', 'Any Preference': 'Any',
+        'Veg': 'Veg', 'Pure Veg': 'Veg',
+        'Vegan': 'Vegan',
+        'Non-Veg': 'Non-Veg',
+        'Jain': 'Jain',
+        'Diabetic': 'Diabetic'
+      }
+    },
+
     async persistGuest(member) {
       if (!this.partyCode || member.backendId) return
       const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, {
@@ -1158,6 +1190,39 @@ export default {
     },
 
     proceedToPayment() { this.showBudgetGuard = false; this.isProcessing = false; this.showCheckout = true },
+
+    async savePartyOrders() {
+      await this.ensureParty()
+      if (!this.partyCode) return
+      for (const member of this.members.filter(m => !m.isHost)) {
+        await this.persistGuest(member).catch(() => null)
+      }
+      for (const order of this.orders) {
+        if (order.backendId) continue
+        const member = this.members.find(m => m.name === order.who)
+        const items = order.items.map(i => ({
+          external_item_id: String(i.id || i.external_item_id || i.name),
+          name: i.name,
+          unit_price: Number(i.price || i.unit_price || 0),
+          quantity: Number(i.qty || i.quantity || 1),
+          is_veg: Boolean(i.isVeg || i.is_veg),
+          is_jain_compatible: Boolean(i.isJainCompatible || i.is_jain_compatible),
+          is_diabetic_friendly: Boolean(i.isDiabeticFriendly || i.is_diabetic_friendly),
+        }))
+        const saved = await apiRequest(`/parties/${this.partyCode}/orders/`, {
+          method: 'POST',
+          body: {
+            guest: member?.backendId || null,
+            placed_by: 'host',
+            restaurant_id: String(order.restaurant_id || order.restaurant),
+            restaurant_name: order.restaurant,
+            payment_method: order.isLate ? 'online' : null,
+            items
+          }
+        }).catch(() => null)
+        if (saved?.id) order.backendId = saved.id
+      }
+    },
 
     async savePartyOrders() {
       await this.ensureParty()
