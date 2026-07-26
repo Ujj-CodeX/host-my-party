@@ -1,0 +1,62 @@
+<template>
+  <div class="auth-section d-flex align-items-center justify-content-center">
+    <div class="auth-card">
+      <h3 class="fw-bold mb-1">Welcome back</h3>
+      <p class="text-muted mb-4">Log in to keep orchestrating your parties.</p>
+
+      <div v-if="error" class="alert alert-danger py-2 small">{{ error }}</div>
+
+      <form @submit.prevent="submit">
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Phone Number</label>
+          <input v-model="phone" type="tel" class="form-control" placeholder="9876543210" required />
+        </div>
+        <div class="mb-4">
+          <label class="form-label fw-semibold small">Password</label>
+          <input v-model="password" type="password" class="form-control" required />
+        </div>
+        <button class="btn btn-orange w-100 py-2" :disabled="loading">
+          {{ loading ? 'Logging in…' : 'Log In' }}
+        </button>
+      </form>
+
+      <p class="text-center mt-4 small text-muted">
+        New here? <router-link to="/signup">Create an account</router-link>
+      </p>
+    </div>
+  </div>
+</template>
+
+<script>
+import { loginPhone } from '@/api/auth'
+
+export default {
+  name: 'LoginView',
+  data() {
+    return { phone: '', password: '', error: '', loading: false }
+  },
+  methods: {
+    async submit() {
+      this.error = ''
+      this.loading = true
+      try {
+        await loginPhone({ phone_number: this.phone, password: this.password })
+        const redirect = this.$route.query.redirect || '/'
+        this.$router.push(redirect)
+      } catch (e) {
+        this.error = e.body?.detail || 'Invalid phone number or password.'
+      } finally {
+        this.loading = false
+      }
+    },
+  },
+}
+</script>
+
+<style scoped>
+.auth-section { min-height: calc(100vh - 72px); background: #f4f5f7; padding: 40px 16px; }
+.auth-card {
+  background: white; border-radius: 20px; padding: 2.5rem;
+  width: 100%; max-width: 420px; box-shadow: 0 10px 40px rgba(40,44,63,0.08);
+}
+</style>

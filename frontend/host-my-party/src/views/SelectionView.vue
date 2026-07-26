@@ -18,6 +18,7 @@
           <span class="config-pill"><i class="bi bi-currency-rupee me-1"></i>₹{{ budget }} Budget</span>
           <span class="config-pill"><i class="bi bi-calendar-event me-1"></i>{{ occasion }}</span>
         </div>
+        <div v-if="error" class="alert alert-danger d-inline-block mt-3 py-2 small">{{ error }}</div>
       </div>
 
       <!-- Three Mode Cards -->
@@ -25,7 +26,7 @@
 
         <!-- Card 1: Food Delivery -->
         <div class="col-lg-4 col-md-6">
-          <div class="mode-card card-food-delivery" @click="selectMode('food')">
+          <div class="mode-card card-food-delivery" :class="{ 'pe-none opacity-50': creating }" @click="selectMode('food_delivery')">
             <div>
               <div class="d-flex justify-content-between align-items-start">
                 <div class="icon-box" style="background:#fff3eb; color:var(--brand-orange)">
@@ -57,7 +58,7 @@
 
         <!-- Card 2: Dineout -->
         <div class="col-lg-4 col-md-6">
-          <div class="mode-card card-dineout" style="opacity:0.75; cursor:not-allowed;">
+          <div class="mode-card card-dineout" :class="{ 'pe-none opacity-50': creating }" @click="selectMode('dineout')">
             <div>
               <div class="d-flex justify-content-between align-items-start">
                 <div class="icon-box" style="background:#f5ecff; color:#8f00ff">
@@ -69,7 +70,7 @@
               </div>
               <h4 class="fw-bold text-dark mt-4 mb-2">Dineout Experience</h4>
               <p class="text-muted small mb-3">
-                Secure corporate lounge tables, pre-order group course packages, and lock in direct bulk discount pricing instantly.
+                Secure a table, filter by dietary fit and capacity, and book directly — no per-guest ordering to manage.
               </p>
               <div class="visual-display-area">
                 <div class="text-center w-100">
@@ -81,40 +82,13 @@
               </div>
             </div>
             <span class="badge-footer-tag">
-              <i class="bi bi-award me-1 text-warning"></i> Coming Soon
+              <i class="bi bi-award me-1 text-warning"></i> Book now
             </span>
           </div>
         </div>
 
-        <!-- Card 3: Instamart -->
-        <div class="col-lg-4 col-md-6">
-          <div class="mode-card card-instamart" style="opacity:0.75; cursor:not-allowed;">
-            <div>
-              <div class="d-flex justify-content-between align-items-start">
-                <div class="icon-box" style="background:#e6f9f0; color:#039855">
-                  <i class="bi bi-cart3 fs-3"></i>
-                </div>
-                <span class="badge bg-light text-dark border px-2 py-1 small fw-bold">
-                  <i class="bi bi-alarm text-success"></i> 10 Mins
-                </span>
-              </div>
-              <h4 class="fw-bold text-dark mt-4 mb-2">Instamart Flash Bash</h4>
-              <p class="text-muted small mb-3">
-                Bulk chips, cold beverages, matching party decor, cut-ice packages, and emergency cleanup supplies shipped flat.
-              </p>
-              <div class="visual-display-area">
-                <div class="d-flex align-items-center justify-content-around w-100">
-                  <div class="text-center"><span class="micro-float d-block">🥤</span><small class="text-muted">Mixers</small></div>
-                  <div class="text-center"><span class="micro-float d-block">🍟</span><small class="text-muted">Snacks</small></div>
-                  <div class="text-center"><span class="micro-float d-block">🧊</span><small class="text-muted">Ice Blocks</small></div>
-                </div>
-              </div>
-            </div>
-            <span class="badge-footer-tag">
-              <i class="bi bi-zap me-1 text-success"></i> Coming Soon
-            </span>
-          </div>
-        </div>
+       
+        
 
       </div>
 
@@ -130,26 +104,51 @@
 </template>
 
 <script>
+import { createParty } from '@/api/party'
+
 export default {
   name: 'SelectionView',
+  data() {
+    return { creating: false, error: '' }
+  },
   computed: {
-    hostName() { return this.$route.query.hostName || 'User' },
+    // Scope note from the docs (Section 4/5.1): hostName is the logged-in
+    // User's own name once Party.host stops being client-suppliable —
+    // SelectionView itself doesn't need it for the create call, only for
+    // display, so a lightweight guess from the query keeps this page
+    // working even before Orchestrator fetches the full party+host object.
+    hostName() { return this.$route.query.hostName || 'Host' },
     budget() { return this.$route.query.budget || 0 },
     guestCount() { return this.$route.query.guestCount || 0 },
     occasion() { return this.$route.query.occasion || 'Event' }
   },
   methods: {
-    selectMode(mode) {
-      if (mode === 'food') {
-        this.$router.push({
-          path: '/orchestrator',
-          query: {
-            hostName: this.hostName,
-            budget: this.budget,
-            guestCount: this.guestCount,
-            occasion: this.occasion
-          }
-        })
+    async selectMode(mode) {
+      if (this.creating) return
+      this.error = ''
+      this.creating = true
+      try {
+        const payload = {
+          mode,
+          occasion: this.occasion,
+          budget: Number(this.budget),
+          expected_guest_count: Number(this.guestCount),
+        }
+        // Party.strategy is only valid for food_delivery (PartyDetailSerializer.validate);
+        // sending it for dineout would 400.
+        if (mode === 'food_delivery') payload.strategy = 'member'
+
+        const party = await createParty(payload)
+
+        if (mode === 'food_delivery') {
+          this.$router.push({ path: '/orchestrator', query: { code: party.code } })
+        } else {
+          this.$router.push({ path: '/dineout', query: { code: party.code } })
+        }
+      } catch (e) {
+        this.error = e.body?.detail || 'Could not create the party. Please try again.'
+      } finally {
+        this.creating = false
       }
     }
   }
