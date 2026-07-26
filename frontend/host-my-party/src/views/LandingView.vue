@@ -100,17 +100,6 @@
         </div>
 
         <div>
-          <!-- Host Name -->
-          <div class="mb-3">
-            <label class="form-label form-label-custom">Host Name</label>
-            <input
-              type="text"
-              class="form-control form-control-custom"
-              v-model="form.hostName"
-              placeholder="e.g., Amit Sharma"
-            />
-          </div>
-
           <!-- Budget & Guest Count -->
           <div class="row g-3 mb-4">
             <div class="col-6">
@@ -153,10 +142,10 @@
 
           <button
             class="btn-swiggy-primary w-100 py-3 fs-6"
-            :disabled="!form.hostName || !form.budget || !form.guestCount"
+            :disabled="!form.budget || !form.guestCount"
             @click="handleContinue"
           >
-            Continue To Orchestrator <i class="bi bi-chevron-right ms-1"></i>
+            Continue To Mode Selection <i class="bi bi-chevron-right ms-1"></i>
           </button>
         </div>
       </div>
@@ -174,7 +163,6 @@ export default {
       currentState: 'landing',
       showModal: false,
       form: {
-        hostName: '',
         budget: null,
         guestCount: null,
         occasion: 'Birthday'
@@ -196,13 +184,14 @@ export default {
       this.showModal = true
     },
     handleContinue() {
-      if (!this.form.hostName || !this.form.budget || !this.form.guestCount) return
+      if (!this.form.budget || !this.form.guestCount) return
       this.showModal = false
-      // Navigate to SelectionView with query params
+      // hostName now comes from the logged-in User (account/serializers.py
+      // UserSerializer), not a free-text field — SelectionView/Orchestrator
+      // read it off the party's nested `host` object instead.
       this.$router.push({
         path: '/selection',
         query: {
-          hostName: this.form.hostName,
           budget: this.form.budget,
           guestCount: this.form.guestCount,
           occasion: this.form.occasion
