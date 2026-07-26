@@ -58,7 +58,7 @@
 
         <!-- Card 2: Dineout -->
         <div class="col-lg-4 col-md-6">
-          <div class="mode-card card-dineout" :class="{ 'pe-none opacity-50': creating }" @click="selectMode('dineout')">
+          <div class="mode-card card-dineout" @click="selectMode('dineout')">
             <div>
               <div class="d-flex justify-content-between align-items-start">
                 <div class="icon-box" style="background:#f5ecff; color:#8f00ff">
@@ -82,7 +82,7 @@
               </div>
             </div>
             <span class="badge-footer-tag">
-              <i class="bi bi-award me-1 text-warning"></i> Book now
+              <i class="bi bi-award me-1 text-warning"></i> Reserve with Dineout
             </span>
           </div>
         </div>
@@ -123,32 +123,17 @@ export default {
     occasion() { return this.$route.query.occasion || 'Event' }
   },
   methods: {
-    async selectMode(mode) {
-      if (this.creating) return
-      this.error = ''
-      this.creating = true
-      try {
-        const payload = {
-          mode,
-          occasion: this.occasion,
-          budget: Number(this.budget),
-          expected_guest_count: Number(this.guestCount),
-        }
-        // Party.strategy is only valid for food_delivery (PartyDetailSerializer.validate);
-        // sending it for dineout would 400.
-        if (mode === 'food_delivery') payload.strategy = 'member'
-
-        const party = await createParty(payload)
-
-        if (mode === 'food_delivery') {
-          this.$router.push({ path: '/orchestrator', query: { code: party.code } })
-        } else {
-          this.$router.push({ path: '/dineout', query: { code: party.code } })
-        }
-      } catch (e) {
-        this.error = e.body?.detail || 'Could not create the party. Please try again.'
-      } finally {
-        this.creating = false
+    selectMode(mode) {
+      if (mode === 'food' || mode === 'dineout') {
+        this.$router.push({
+          path: mode === 'food' ? '/orchestrator' : '/dineout',
+          query: {
+            hostName: this.hostName,
+            budget: this.budget,
+            guestCount: this.guestCount,
+            occasion: this.occasion
+          }
+        })
       }
     }
   }

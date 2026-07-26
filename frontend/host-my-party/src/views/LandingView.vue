@@ -14,7 +14,7 @@
                 Handle complex dietary conflicts, asynchronous multi-order delivery timelines, precise budget optimization, and instant group bill-splitting effortlessly down to the last rupee.
               </p>
               <div class="d-flex flex-row gap-3">
-                <button class="btn-swiggy-primary btn-lg px-4 fs-6" @click="startPlanning">
+                <button class="btn-swiggy-primary btn-lg px-4 fs-6" @click="handleStartPlanning">
                   Start Planning <i class="bi bi-arrow-right ms-2"></i>
                 </button>
                 <button class="btn-swiggy-outline btn-lg px-4 fs-6" @click="alert('Demo feature coming soon!')">
@@ -176,12 +176,9 @@ export default {
     }
   },
   methods: {
-    startPlanning() {
-      // Party creation needs an owning host (JWT), so we gate here rather
-      // than letting an anonymous person fill the whole form and only
-      // discover they need an account at the very last step.
+    handleStartPlanning() {
       if (!isAuthenticated()) {
-        this.$router.push({ path: '/login', query: { redirect: '/' } })
+        this.$router.push({ path: '/login', query: { redirect: '/selection' } })
         return
       }
       this.showModal = true

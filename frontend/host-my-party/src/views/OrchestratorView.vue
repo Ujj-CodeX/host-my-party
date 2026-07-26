@@ -662,6 +662,10 @@ export default {
     await this.ensureParty()
   },
 
+  async mounted() {
+    await this.ensureParty()
+  },
+
   methods: {
     async loadParty(code) {
       this.loadingParty = true
@@ -698,6 +702,59 @@ export default {
       navigator.clipboard.writeText(this.party.join_link)
       this.linkCopied = true
       setTimeout(() => { this.linkCopied = false }, 2000)
+    },
+
+    dietaryValue(pref) {
+      return { Any: 'any', Veg: 'veg', Vegan: 'vegan', 'Non-Veg': 'non_veg', Jain: 'jain', Diabetic: 'diabetic' }[pref] || 'any'
+    },
+
+    async ensureParty() {
+      if (this.partyCode) return
+      try {
+        const party = await apiRequest('/parties/', {
+          method: 'POST',
+          body: {
+            mode: 'food_delivery',
+            strategy: this.strategy,
+            occasion: this.occasion || 'House Party',
+            budget: this.budget,
+            expected_guest_count: this.partySize,
+            delivery_address: `${this.location.address}, ${this.location.city} ${this.location.pin}`,
+            status: 'active'
+          }
+        })
+        this.partyCode = party.code
+        this.joinLink = party.join_link
+        await this.syncHostGuest()
+      } catch (e) {
+        this.saveError = e.message
+      }
+    },
+
+    async syncHostGuest() {
+      if (!this.partyCode || !this.hostName) return
+      const host = this.members.find(m => m.isHost)
+      if (host?.backendId) return
+      try {
+        const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, { method: 'POST', body: { name: this.hostName, dietary_pref: 'any' } })
+        if (host) host.backendId = guest.id
+      } catch {
+        // Guest may already exist from an earlier draft; continue locally.
+      }
+    },
+
+    async persistGuest(member) {
+      if (!this.partyCode || member.backendId) return
+      const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, {
+        method: 'POST',
+        body: {
+          name: member.name,
+          dietary_pref: this.dietaryValue(member.pref),
+          is_late: member.late,
+          late_offset_minutes: member.late ? member.lateMinutes : null
+        }
+      })
+      member.backendId = guest.id
     },
 
     dietaryValue(pref) {
@@ -1101,6 +1158,39 @@ export default {
     },
 
     proceedToPayment() { this.showBudgetGuard = false; this.isProcessing = false; this.showCheckout = true },
+
+    async savePartyOrders() {
+      await this.ensureParty()
+      if (!this.partyCode) return
+      for (const member of this.members.filter(m => !m.isHost)) {
+        await this.persistGuest(member).catch(() => null)
+      }
+      for (const order of this.orders) {
+        if (order.backendId) continue
+        const member = this.members.find(m => m.name === order.who)
+        const items = order.items.map(i => ({
+          external_item_id: String(i.id || i.external_item_id || i.name),
+          name: i.name,
+          unit_price: Number(i.price || i.unit_price || 0),
+          quantity: Number(i.qty || i.quantity || 1),
+          is_veg: Boolean(i.isVeg || i.is_veg),
+          is_jain_compatible: Boolean(i.isJainCompatible || i.is_jain_compatible),
+          is_diabetic_friendly: Boolean(i.isDiabeticFriendly || i.is_diabetic_friendly),
+        }))
+        const saved = await apiRequest(`/parties/${this.partyCode}/orders/`, {
+          method: 'POST',
+          body: {
+            guest: member?.backendId || null,
+            placed_by: 'host',
+            restaurant_id: String(order.restaurant_id || order.restaurant),
+            restaurant_name: order.restaurant,
+            payment_method: order.isLate ? 'online' : null,
+            items
+          }
+        }).catch(() => null)
+        if (saved?.id) order.backendId = saved.id
+      }
+    },
 
     async savePartyOrders() {
       await this.ensureParty()

@@ -25,6 +25,7 @@ from core.permissions import IsValidGuestSession
 from party.authentication import GuestSessionAuthentication
 from party.models import Party
 
+from .dineout_provider import get_dineout_provider
 from .groq_utils import call_groq_validated
 from .mock_swiggy import (
     RESTAURANTS,
@@ -419,3 +420,76 @@ def plan_party(request):
         "plan": response.choices[0].message.content,
         "guests": guests
     })
+
+# ─────────────────────────────────────────────
+# 6. DINEOUT MOCK/GROQ-READY HELPERS
+# ─────────────────────────────────────────────
+@api_view(['POST'])
+def dineout_restaurants(request):
+    """Returns Dineout restaurants filtered by party size, dietary needs,
+    location radius, and per-head budget using the mock Swiggy Dineout provider.
+    The response is intentionally frontend-friendly and can be replaced by a
+    Groq-ranked/provider-backed implementation without changing the UI contract.
+    """
+    guest_count = int(request.data.get('guest_count') or 1)
+    budget = float(request.data.get('budget') or 0)
+    max_distance_km = float(request.data.get('max_distance_km') or 10)
+    dietary_prefs = request.data.get('dietary_prefs') or []
+    if isinstance(dietary_prefs, str):
+        dietary_prefs = [dietary_prefs]
+
+    normalized = {str(pref).lower().replace('-', '_') for pref in dietary_prefs}
+    needs_veg = bool(normalized & {'veg', 'vegan', 'jain'})
+    needs_jain = 'jain' in normalized
+    per_head_budget = budget / guest_count if guest_count else budget
+
+    provider = get_dineout_provider()
+    restaurants = provider.search_restaurants(
+        guest_count=guest_count,
+        needs_veg=needs_veg,
+        needs_jain=needs_jain,
+        max_distance_km=max_distance_km,
+    )
+
+    ranked = []
+    for restaurant in restaurants:
+        estimated_per_head = restaurant.get('avgCostForTwo', 0) / 2
+        budget_status = 'ok' if not budget or estimated_per_head <= per_head_budget else 'over_budget'
+        ranked.append({
+            **restaurant,
+            'estimatedPerHead': round(estimated_per_head),
+            'estimatedTotal': round(estimated_per_head * guest_count),
+            'budgetStatus': budget_status,
+            'budgetNote': (
+                'Fits group budget' if budget_status == 'ok'
+                else f"Approx ₹{round((estimated_per_head - per_head_budget) * guest_count)} over budget"
+            ),
+            'aiReason': 'Matches seating, distance, dietary needs, and mock Dineout availability.',
+        })
+
+    ranked.sort(key=lambda item: (item['budgetStatus'] != 'ok', item['distanceKm'], -item['rating']))
+    return Response({'success': True, 'restaurants': ranked})
+
+
+@api_view(['POST'])
+def dineout_slots(request):
+    provider = get_dineout_provider()
+    result = provider.check_slots(
+        request.data.get('restaurant_id'),
+        request.data.get('date'),
+        int(request.data.get('guest_count') or 1),
+    )
+    return Response(result)
+
+
+@api_view(['POST'])
+def dineout_book(request):
+    provider = get_dineout_provider()
+    result = provider.book_table(
+        request.data.get('restaurant_id'),
+        request.data.get('date'),
+        request.data.get('time'),
+        int(request.data.get('guest_count') or 1),
+        special_request=request.data.get('special_request', ''),
+    )
+    return Response(result)

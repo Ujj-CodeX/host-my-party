@@ -8,5 +8,8 @@ urlpatterns = [
     path('scheduled-orders/', views.get_scheduled_orders),
     path('budget-check/', views.budget_check),
     path('merge-check/', views.merge_check),
+    path('dineout/restaurants/', views.dineout_restaurants),
+    path('dineout/slots/', views.dineout_slots),
+    path('dineout/book/', views.dineout_book),
     path('plan-party/', views.plan_party),  # legacy, kept for compatibility
 ]

@@ -8,6 +8,7 @@ import LoginView from '../views/LoginView.vue'
 import SignupView from '../views/SignupView.vue'
 import JoinPartyView from '../views/JoinPartyView.vue'
 import GuestOrderView from '../views/GuestOrderView.vue'
+import ProfileView from '../views/ProfileView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -20,6 +21,7 @@ const router = createRouter({
     { path: '/dineout', component: DineoutView, meta: { requiresAuth: true } },
     { path: '/join/:code', component: JoinPartyView, props: true },
     { path: '/guest-order', component: GuestOrderView },
+    { path: '/profile', component: ProfileView, meta: { requiresAuth: true } },
   ],
 })
 
