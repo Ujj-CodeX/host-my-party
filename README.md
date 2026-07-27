@@ -13,7 +13,7 @@ The current build uses a **mock Swiggy provider** while partner/MCP access is pe
 ## 🎥 Demo
 
 **Latest Product Walkthrough:**  
-`<ADD DEMO VIDEO LINK>`
+`https://drive.google.com/file/d/1S5fhYGIY0Ls6VljKWZLuTKsPtM3LdBJN/view?usp=drivesdk`
 
 The demo covers the current end-to-end flow: party creation, Food Delivery orchestration, guest participation, dietary-aware recommendations, real-time synchronization, budget tracking, and late-arrival handling.
 
