@@ -1,235 +1,447 @@
 # 🎉 Host My Party
-### AI-Powered Party Planning Agent — Swiggy MCP Integration
 
-> **One prompt. Every preference handled. Party sorted.**
+### AI-Assisted Party Orchestration for Swiggy Food & Dineout
 
-Built for **Swiggy Builders Club** — integrating Swiggy Food MCP Server with Groq LLM to plan entire parties end-to-end, handling dietary conflicts, per-member ordering, late arrival scheduling, bill splitting, and WhatsApp-ready output.
+> Coordinate guests, dietary preferences, orders, budgets, arrival times, and dineout plans from one shared party experience.
 
----
+**Host My Party** is a full-stack prototype developed as part of the **Swiggy Builders Club**. It explores how an orchestration layer can sit on top of Swiggy Food and Dineout experiences to simplify group food planning.
 
-## 🧠 What It Does
-
-Host My Party is a Django + Vue.js AI agent that connects to Swiggy's Food MCP Server to plan a group party from scratch. The host inputs guest names, dietary preferences, budget, and party time — the AI handles everything else.
-
-| Problem | How We Solve It |
-|--------|----------------|
-| Mixed dietary needs (Jain + Diabetic + Non-Veg) | Multi-constraint conflict detection via Groq LLM |
-| Someone always arrives late | Task Scheduler auto-places late arrival orders |
-| Bill splitting after ordering is painful | Per-person exact split with UPI deeplinks |
-| Sharing the plan with the group | One-tap WhatsApp-ready message generated |
+The current build uses a **mock Swiggy provider** while partner/MCP access is pending. The integration boundary is intentionally isolated so that the mock provider can later be replaced by real Swiggy capabilities without redesigning the core party workflow.
 
 ---
 
-## ⚙️ Tech Stack
+## 🎥 Demo
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Vue.js 3 + Bootstrap 5 |
-| Backend | Django 6 + Django REST Framework |
-| AI Engine | Groq API — Llama 3.3 70B (Free Tier) |
-| MCP Integration | Swiggy Food MCP Server |
-| Deployment | Vercel (Frontend) + Railway (Backend) |
+**Latest Product Walkthrough:**  
+`<ADD DEMO VIDEO LINK>`
+
+The demo covers the current end-to-end flow: party creation, Food Delivery orchestration, guest participation, dietary-aware recommendations, real-time synchronization, budget tracking, and late-arrival handling.
+
+---
+
+## 💡 The Problem
+
+Group food planning becomes surprisingly complicated once multiple people are involved.
+
+A host may need to coordinate:
+
+- different dietary preferences
+- individual vs shared ordering
+- multiple restaurants and menus
+- a fixed party budget
+- guests arriving at different times
+- real-time changes from multiple participants
+- dineout restaurant selection and booking
+
+**Host My Party turns these disconnected decisions into one coordinated party workflow.**
+
+---
+
+## ✨ Product Experience
+
+### 🍱 Food Delivery
+
+The host can choose between two orchestration strategies:
+
+**Member-wise**
+
+Each guest can have an independent dietary preference and order. Guests may order for themselves through a shareable party link, while the host retains visibility and override control.
+
+**Whole-Sum**
+
+The host manages one combined order optimized around the group's overall preferences and budget.
+
+### 🍽️ Dineout
+
+For dineout parties, the orchestration changes from individual ordering to group-level restaurant discovery.
+
+The system considers:
+
+- party size
+- dietary requirements
+- restaurant suitability
+- estimated cost
+- seating/capacity constraints
+- available booking slots
+
+---
+
+## 🧠 Intelligent Orchestration
+
+### Dietary-Aware Recommendations
+
+The recommendation layer considers preferences such as:
+
+- Vegetarian
+- Non-Vegetarian
+- Vegan
+- Jain
+- Diabetic-friendly
+
+Groq is used for reasoning and recommendation assistance while deterministic backend validation protects important constraints.
+
+### ⏰ Late-Arrival Scheduling
+
+A guest can be marked as arriving late.
+
+Instead of sending every order at the same time, Host My Party can calculate an appropriate order trigger time using:
+
+```text
+fire_time =
+party_start_time
++ guest_late_offset
+- estimated_restaurant_preparation_time
+```
+
+Background scheduling is handled using Celery and Redis.
+
+### 💰 Budget Guardian
+
+The party maintains a running total against the host's configured budget.
+
+The orchestration layer can detect when the party is approaching or exceeding the available budget and surface adjustment suggestions.
+
+### 🔀 Order Merge Detection
+
+Compatible orders can be identified for consolidation where appropriate, reducing unnecessary fragmentation across the party.
+
+### ⚡ Real-Time Party State
+
+Guest activity is synchronized with the host dashboard using Django Channels and WebSockets.
+
+REST remains the authoritative state, while WebSocket events trigger immediate UI synchronization.
+
+---
+
+## 👥 Frictionless Guest Flow
+
+Guests do **not** need to create a permanent account.
+
+```text
+Host creates party
+        ↓
+Shareable /join/:code link
+        ↓
+Guest enters name + dietary preference
+        ↓
+Party-scoped guest session issued
+        ↓
+Guest explores recommendations
+        ↓
+Guest places/updates own order
+        ↓
+Host dashboard updates in real time
+```
+
+Guest sessions are restricted to the specific party and guest identity.
 
 ---
 
 ## 🏗️ Architecture
 
+```text
+┌──────────────────────────────────────┐
+│             Vue.js 3 UI              │
+│                                      │
+│ Host Dashboard   Guest Flow   Dineout│
+└───────────────────┬──────────────────┘
+                    │
+                 REST API
+                    │
+┌───────────────────▼──────────────────┐
+│        Django + Django REST           │
+│                                      │
+│ Party / Guest / Order / Booking      │
+│ Authentication & Authorization       │
+└───────┬───────────┬───────────┬──────┘
+        │           │           │
+        │           │           └─────────────┐
+        ▼           ▼                         ▼
+     Groq AI    PostgreSQL              Celery + Redis
+        │
+        ▼
+┌──────────────────────────────────────┐
+│        Swiggy Provider Layer          │
+│                                      │
+│  Current: MockSwiggyProvider         │
+│             ↓                        │
+│  Target:  Real Swiggy MCP/API        │
+└──────────────────────────────────────┘
 ```
-User (Vue.js Frontend)
-        ↓  REST API
-Django Backend
+
+---
+
+## 🔌 Swiggy Integration Strategy
+
+### Current State
+
+The prototype currently runs against a local mock provider containing representative restaurant, menu, dietary, pricing, and dineout data.
+
+```text
+Application
+     ↓
+Swiggy Provider Interface
+     ↓
+Mock Provider
+```
+
+This allows the orchestration workflow to be developed and demonstrated independently of production credentials.
+
+### Target State
+
+Once the appropriate Swiggy partner/MCP capabilities are available:
+
+```text
+Application
+     ↓
+Swiggy Provider Interface
+     ↓
+Real Swiggy Food / Dineout Integration
+```
+
+The intention is to replace the provider implementation rather than rewrite the orchestration layer.
+
+### Integration Capabilities Requested
+
+For a complete integration, Host My Party would benefit from access to:
+
+**Swiggy Food**
+- restaurant discovery
+- live menu/catalogue data
+- dietary metadata where available
+- pricing and delivery estimates
+- sandbox/test order placement
+- order status updates
+
+**Swiggy Dineout**
+- restaurant search and details
+- availability/slot discovery
+- booking creation
+- booking confirmation/status
+
+**Payment / Checkout**
+
+Host My Party is designed as an **orchestration layer, not a payment processor**.
+
+The intended production flow is:
+
+```text
+Host My Party
+    ↓
+coordinates party
+    ↓
+finalizes selected order / booking
+    ↓
+hands off to Swiggy
+    ↓
+Swiggy-native checkout & payment
+    ↓
+order / booking confirmation
+    ↓
+status reflected back in Host My Party
+```
+
+No independent payment gateway is intended to be introduced into Host My Party.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Vue.js 3, Bootstrap 5 |
+| Backend | Django, Django REST Framework |
+| Database | PostgreSQL / Supabase |
+| AI | Groq |
+| Authentication | JWT + Google OAuth |
+| Realtime | Django Channels, WebSockets |
+| Background Tasks | Celery + Redis |
+| Deployment | Vercel + Railway |
+| External Integration | Mock Swiggy Provider → Swiggy MCP/API |
+
+---
+
+## 🔐 Authentication & Security
+
+Host and guest identities use separate authentication models.
+
+### Host
+
+```text
+Login / Google OAuth
         ↓
-Groq LLM (Llama 3.3 70B) ← Brain / Orchestrator
-        ↓  Tool Calling
-Swiggy Food MCP Server
+JWT access + refresh tokens
         ↓
-Conflict Detection + Filtering
+Authenticated Django REST endpoints
+```
+
+### Guest
+
+```text
+Party join link
         ↓
-WhatsApp-Ready Party Plan Output
+Guest created for specific party
+        ↓
+Opaque session token
+        ↓
+Party-scoped GuestSessionAuthentication
 ```
+
+Additional safeguards include:
+
+- host ownership checks
+- guest-party isolation
+- protected host routes
+- server-controlled order totals/status
+- server-side scheduling
+- restricted guest mutation scope
 
 ---
 
-## ✨ Core Features
+## 📂 Project Structure
 
-### 1. Two Ordering Modes
-- **Explicit Mode** — Host assigns dishes per guest individually
-- **Wholesome Mode** — Host places one shared optimized order for everyone
-
-### 2. Multi-Constraint Conflict Detection
-Groq LLM filters restaurants satisfying ALL guest preferences simultaneously:
-- Jain guests → `isJainCompatible: true`
-- Diabetic guests → `isDiabeticFriendly: true`
-- Veg/Non-Veg → handled in single pass
-
-### 3. Distance-Based Restaurant Filter
-Restaurants are sorted by proximity to host's address — ensuring all orders arrive at approximately the same time.
-
-### 4. Late Arrival Scheduler
-Flag individual guests as arriving late. Their order auto-schedules separately via task queue. Main order fires immediately.
-
-### 5. Bill Split + UPI Deeplinks
-Exact per-person amount calculated. Each person gets a direct UPI payment link in the final WhatsApp message.
-
-### 6. WhatsApp-Ready Output
-One-tap copy of complete party plan — venue, items, timings, per-person cost, UPI links — formatted for WhatsApp sharing.
-
----
-
-## 🚀 Run Locally
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- Groq API Key (free at [console.groq.com](https://console.groq.com))
-
-### Backend Setup
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Create .env file
-echo "GROQ_API_KEY=your_key_here" > .env
-
-python manage.py runserver
-```
-
-### Frontend Setup
-```bash
-cd frontend/host-my-party
-npm install
-npm run dev
-```
-
-Frontend runs at `http://localhost:5173`
-Backend runs at `http://localhost:8000`
-
----
-
-## 📡 API Reference
-
-### `POST /api/plan-party/`
-
-**Request:**
-```json
-{
-  "guests": [
-    { "name": "Priya", "diet": "jain" },
-    { "name": "Rahul", "diet": "non-veg" },
-    { "name": "Arjun", "diet": "diabetic" }
-  ],
-  "budget": 5000,
-  "time": "7:30 PM",
-  "mode": "wholesome"
-}
-```
-
-**Response:**
-```json
-{
-  "plan": "🎉 Party Plan Ready!\n\nPunjab Grill...",
-  "guests": [...]
-}
-```
-
----
-
-## 🗂️ Project Structure
-
-```
+```text
 host-my-party/
 │
 ├── backend/
 │   ├── config/
-│   │   ├── settings.py
-│   │   └── urls.py
+│   ├── accounts/
 │   ├── party/
-│   │   ├── views.py          ← API + Groq integration
-│   │   ├── mock_swiggy.py    ← Swiggy MCP mock (pending credentials)
+│   │   ├── models.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   ├── consumers.py
+│   │   ├── tasks.py
+│   │   ├── mock_swiggy.py
 │   │   └── urls.py
 │   └── requirements.txt
 │
-├── frontend/host-my-party/
-│   ├── src/
-│   │   ├── views/
-│   │   │   ├── LandingView.vue       ← Mode selection
-│   │   │   └── OrchestratorView.vue  ← Main dashboard
-│   │   ├── router/index.js
-│   │   └── App.vue
-│   └── package.json
+├── frontend/
+│   └── host-my-party/
+│       ├── src/
+│       │   ├── api/
+│       │   ├── router/
+│       │   ├── views/
+│       │   │   ├── LandingView.vue
+│       │   │   ├── SelectionView.vue
+│       │   │   ├── OrchestratorView.vue
+│       │   │   ├── JoinPartyView.vue
+│       │   │   ├── GuestOrderView.vue
+│       │   │   └── DineoutView.vue
+│       │   └── App.vue
+│       └── package.json
 │
 └── README.md
 ```
 
 ---
 
-## 🔌 Swiggy MCP Integration
+## 🚀 Running Locally
 
-Currently using mock Swiggy Food MCP data that mirrors the exact production schema:
+### Prerequisites
 
-```python
-# mock_swiggy.py — matches real Swiggy MCP response structure
-{
-  "success": True,
-  "data": {
-    "restaurants": [
-      {
-        "id": "rest_001",
-        "name": "Punjab Grill",
-        "distanceKm": 2.1,
-        "menu": [
-          {
-            "name": "Dal Makhani",
-            "price": 220,
-            "isVeg": True,
-            "isJainCompatible": True,
-            "isDiabeticFriendly": True
-          }
-        ]
-      }
-    ]
-  }
-}
+- Python 3.10+
+- Node.js 18+
+- PostgreSQL
+- Redis
+- Groq API key
+
+### Backend
+
+```bash
+cd backend
+
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# macOS/Linux
+source venv/bin/activate
+
+pip install -r requirements.txt
+
+python manage.py migrate
+python manage.py runserver
 ```
 
-**Awaiting Swiggy Builders Club credentials** — one function swap and real data flows in.
+### Frontend
+
+```bash
+cd frontend/host-my-party
+
+npm install
+npm run dev
+```
+
+Development URLs:
+
+```text
+Frontend: http://localhost:5173
+Backend:  http://localhost:8000
+```
+
+Environment variables and credentials are intentionally excluded from the repository.
 
 ---
 
-## 🗓️ Build Timeline
+## 🗺️ Current Status
 
-| Day | Milestone |
-|-----|-----------|
-| Day 1-2 | OAuth 2.1 + MCP client setup + Groq integration ✅ |
-| Day 3-4 | Conflict detection engine + per-member ordering logic ✅ |
-| Day 5 | Late Arrival Mode + Budget Guard |
-| Day 6 | Bill split + UPI deeplinks + WhatsApp generator |
-| Day 7 | End-to-end demo video + deployment |
+| Capability | Status |
+|---|---:|
+| Host authentication | ✅ Implemented |
+| Party creation | ✅ Implemented |
+| Member-wise orchestration | ✅ Implemented |
+| Whole-Sum orchestration | ✅ Implemented |
+| Guest invite/session flow | ✅ Implemented |
+| Dietary-aware recommendations | ✅ Implemented |
+| Real-time synchronization | ✅ Implemented |
+| Budget tracking | ✅ Implemented |
+| Late-arrival scheduling | ✅ Implemented |
+| Dineout workflow | ✅ Prototype |
+| Swiggy restaurant/menu data | 🧪 Mock provider |
+| Real Swiggy Food MCP/API | ⏳ Awaiting access |
+| Real Dineout integration | ⏳ Awaiting access |
+| Swiggy-native checkout/payment | 🎯 Integration target |
+
+---
+
+## 🎯 Product Principle
+
+Host My Party does not aim to replace Swiggy's ordering, booking, logistics, or payment infrastructure.
+
+It acts as the **coordination layer before and around those capabilities**:
+
+> **Plan together → orchestrate intelligently → execute through Swiggy.**
 
 ---
 
 ## 👨‍💻 Developer
 
-| | |
-|--|--|
-| **Name** | Ujjawal Rauniyar |
-| **Education** | BS Student — IIT Madras (Data Science & Applications) |
-| **Stack** | Python, Django REST, PostgreSQL, Vue.js, Celery, Redis |
-| **Production Project** | [JeevanDaan+](https://github.com/Ujj-CodeX) — Healthcare platform, 45+ REST API endpoints |
-| **GitHub** | [github.com/Ujj-CodeX](https://github.com/Ujj-CodeX) |
-| **LinkedIn** | [linkedin.com/in/ujjawal-rauniyar-21a34a272](https://linkedin.com/in/ujjawal-rauniyar-21a34a272) |
+**Ujjawal Rauniyar**  
+BS — Data Science & Applications, IIT Madras
+
+Python · Django · Django REST Framework · PostgreSQL · Vue.js · Celery · Redis
+
+**GitHub:**  
+https://github.com/Ujj-CodeX
+
+**LinkedIn:**  
+https://linkedin.com/in/ujjawal-rauniyar-21a34a272
 
 ---
 
-## 📬 Swiggy Builders Club
+## 🤝 Swiggy Builders Club
 
-Built as part of **Swiggy Builders Club** application.
-Demo video shared at [builders@swiggy.in](mailto:builders@swiggy.in) within 7 days of API access.
+Host My Party is currently being developed as part of the **Swiggy Builders Club**.
 
-> *Happy to jump on a call to walk through the architecture.*
+The current prototype demonstrates the orchestration layer using mock integration data while awaiting the appropriate Swiggy capabilities required to move from simulation to real ordering, logistics, Dineout booking, and Swiggy-native checkout.
+
+Feedback on the recommended MCP/API integration path is welcome.
 
 ---
 
-<p align="center">Made with ❤️ for Swiggy Builders Club</p>
+<p align="center">
+  <strong>Host My Party</strong><br>
+  Plan together. Orchestrate intelligently. Execute through Swiggy.
+</p>
