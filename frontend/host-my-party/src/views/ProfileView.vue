@@ -95,3 +95,7 @@ export default {
 .profile-detail { background: #f8f9fa; border: 1px solid #eef0f4; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 4px; min-height: 84px; }
 .stat-card { background: white; border: 1px solid #eef0f4; border-radius: 18px; padding: 18px; }
 </style>
+
+
+
+

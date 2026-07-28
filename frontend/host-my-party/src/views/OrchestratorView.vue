@@ -34,6 +34,16 @@
                   />
                 </div>
               </div>
+
+              <div class="glass-card py-2 px-3 d-inline-block bg-light border mt-2">
+    <span class="text-muted small d-block">Party Start Time</span>
+    <input
+      type="datetime-local"
+      v-model="partyStartTimeLocal"
+      @change="savePartyStartTime"
+      class="form-control form-control-sm border-0 bg-transparent p-0"
+    />
+  </div>
             </div>
           </div>
         </div>
@@ -111,6 +121,9 @@
                     <button class="btn btn-sm btn-outline-orange w-100" @click="startOrderFlow(null, hostName, 'Any', false, 0, cat.name)">
                       Order Now
                     </button>
+                    <button v-if="strategy === 'whole'" class="btn btn-orange w-100 mt-3" @click="runWholeSumOptimize">
+  <i class="bi bi-stars me-1"></i> AI Optimize Whole-Party Order
+</button>
                   </div>
                 </div>
               </div>
@@ -204,8 +217,18 @@
                 <div v-if="orders.length === 0" class="text-muted text-center py-3">
                   No orders placed yet. Start orchestrating!
                 </div>
-                <div class="text-muted fst-italic" style="font-size:0.75rem;">
-                  {{ orderItemsLabel(order) }}
+                <div v-for="order in orders" :key="order.id" class="border-bottom pb-2 mb-2">
+                  <div class="d-flex justify-content-between gap-2">
+                    <span class="fw-semibold">{{ order.guest_name || hostName }}</span>
+                    <span class="text-muted">₹{{ order.total }}</span>
+                  </div>
+                  <div class="text-muted fst-italic" style="font-size:0.75rem;">
+                    {{ orderItemsLabel(order) }}
+                  </div>
+                  <div class="text-muted" style="font-size:0.72rem;">
+                    {{ order.restaurant_name }}
+                    <span v-if="order.last_modified_by === 'host' && order.guest" class="badge bg-light text-dark border ms-1">Edited by host</span>
+                  </div>
                 </div>
               </div>
 
@@ -265,6 +288,7 @@
           </div>
         </div>
       </div>
+    </div>
     </template>
 
     <!-- ===== MODAL 0: Add Guest ===== -->
@@ -551,7 +575,20 @@
 </template>
 
 <script>
-import { apiRequest } from '@/api/client'
+import { API_BASE, apiRequest, getAccessToken } from '@/api/client'
+
+const PREF_TO_CODE = {
+  Any: 'any',
+  Veg: 'veg',
+  'Non-Veg': 'non_veg',
+  Vegan: 'vegan',
+  Jain: 'jain',
+  Diabetic: 'diabetic',
+}
+
+const CODE_TO_PREF = Object.fromEntries(
+  Object.entries(PREF_TO_CODE).map(([label, code]) => [code, label]),
+)
 
 export default {
   name: 'OrchestratorView',
@@ -560,10 +597,12 @@ export default {
     return {
       loadingParty: true,
       party: null,
+      partyCode: this.$route.query.partyCode || this.$route.query.code || '',
       budget: 0,
       strategy: 'member',
-      partySize: 4,
+      partySize: 1,
       linkCopied: false,
+      copied: false,
 
       guests: [],
       orders: [],
@@ -572,13 +611,13 @@ export default {
         { name: 'Pizza', emoji: '🍕', rating: 4.2, time: 35 },
         { name: 'Burgers', emoji: '🍔', rating: 4.5, time: 25 },
         { name: 'Biryani', emoji: '🍗', rating: 4.1, time: 40 },
-        { name: 'Chinese', emoji: '🍝', rating: 4.3, time: 30 }
+        { name: 'Chinese', emoji: '🍝', rating: 4.3, time: 30 },
       ],
 
-      // Modal states
       showAddGuest: false,
       newGuest: { name: '', pref: 'Any', late: false, lateMinutes: 30 },
-      guestError: '', savingGuest: false,
+      guestError: '',
+      savingGuest: false,
 
       showAiScan: false,
       isScanning: false,
@@ -590,280 +629,297 @@ export default {
       showLateSchedule: false,
       lateScheduleLoading: false,
       lateScheduleData: {},
+      pendingOrderPayload: null,
+
       showBudgetGuard: false,
       budgetGuardLoading: false,
       budgetGuardData: {},
+
       showMerge: false,
       mergeLoading: false,
       mergeData: { has_merges: false, merges: [] },
+
       showCheckout: false,
       showSuccess: false,
       isProcessing: false,
       placingOrder: false,
 
-      // Temp order state
-      currentOrderingForId: null, // null = host
+      currentOrderingForId: null,
       currentOrderingFor: '',
-      currentOrderingPref: '',
+      currentOrderingPref: 'Any',
       currentIsLate: false,
       currentLateMinutes: 30,
+      editingOrderId: null,
+
       tempRestaurantObj: null,
-      tempRestaurant: null,
+      tempRestaurant: '',
       tempETA: 0,
       tempDistanceKm: 0,
       tempMenuSelection: [],
 
       whatsappMessage: '',
-      pendingLateOrder: null,  // holds order data while waiting for schedule confirm
-      partyCode: this.$route.query.partyCode || '',
-      joinLink: '',
-      saveError: '',
+
+      socket: null,
+      socketRetryTimer: null,
+      socketRetryCount: 0,
+      destroyed: false,
+
+      partyStartTimeLocal: '',
     }
   },
 
   computed: {
-    hostName() { return this.party?.host?.name || 'Host' },
-    billItemTotal() { return this.orders.reduce((sum, o) => sum + o.item_total, 0) },
-    billDelivery() { return this.orders.reduce((sum, o) => sum + o.delivery_fee, 0) },
-    billTaxes() { return this.orders.reduce((sum, o) => sum + o.taxes, 0) },
-    billFinalTotal() { return this.billItemTotal + this.billDelivery + this.billTaxes },
-    budgetLeft() { return this.budget - this.billFinalTotal },
-    isOverBudget() { return this.billFinalTotal > this.budget },
-    budgetPercent() { return this.budget ? Math.min((this.billFinalTotal / this.budget) * 100, 100) : 0 },
+    hostName() {
+      return this.party?.host?.name || this.party?.host?.username || 'Host'
+    },
+
+    billItemTotal() {
+      return this.orders.reduce((sum, order) => sum + Number(order.item_total || 0), 0)
+    },
+
+    billDelivery() {
+      return this.orders.reduce((sum, order) => sum + Number(order.delivery_fee || 0), 0)
+    },
+
+    billTaxes() {
+      return this.orders.reduce((sum, order) => sum + Number(order.taxes || 0), 0)
+    },
+
+    billFinalTotal() {
+      return this.billItemTotal + this.billDelivery + this.billTaxes
+    },
+
+    budgetLeft() {
+      return Number(this.budget || 0) - this.billFinalTotal
+    },
+
+    isOverBudget() {
+      return this.billFinalTotal > Number(this.budget || 0)
+    },
+
+    budgetPercent() {
+      if (!Number(this.budget)) return 0
+      return Math.min((this.billFinalTotal / Number(this.budget)) * 100, 100)
+    },
+
     budgetBarClass() {
       if (this.isOverBudget) return 'bg-danger'
       if (this.budgetPercent > 85) return 'bg-warning'
       return 'progress-bar-swiggy'
     },
-    menuTempTotal() { return this.tempMenuSelection.reduce((sum, i) => sum + i.price * i.qty, 0) }
+
+    menuTempTotal() {
+      return this.tempMenuSelection.reduce(
+        (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0),
+        0,
+      )
+    },
   },
 
   async mounted() {
-    const code = this.$route.query.code
-    if (!code) { this.$router.push('/selection'); return }
-    await this.loadParty(code)
+    if (!this.partyCode) {
+      await this.$router.replace('/selection')
+      return
+    }
+
+    await this.loadParty()
+    if (this.party) this.connectWebSocket()
   },
 
-  async mounted() {
-    await this.ensureParty()
-  },
-
-  async mounted() {
-    await this.ensureParty()
+  beforeUnmount() {
+    this.destroyed = true
+    if (this.socketRetryTimer) clearTimeout(this.socketRetryTimer)
+    if (this.socket) {
+      this.socket.onclose = null
+      this.socket.close()
+    }
   },
 
   methods: {
-    async loadParty(code) {
+    async loadParty() {
       this.loadingParty = true
       try {
-        const [party, guests, orders] = await Promise.all([
-          getParty(code), listGuests(code), listOrders(code),
-        ])
-        this.party = party
-        this.budget = party.budget
-        this.strategy = party.strategy || 'member'
-        this.guests = guests
-        this.orders = orders
-      } catch {
-        this.$router.push('/selection')
+        await this.refreshAuthoritativeState()
+      } catch (error) {
+        console.error('Unable to load party:', error)
+        await this.$router.replace('/selection')
       } finally {
         this.loadingParty = false
       }
     },
 
-    prefLabel(code) { return CODE_TO_PREF[code] || 'Any' },
+    async refreshAuthoritativeState() {
+      const code = this.partyCode
+      const [party, guests, orders] = await Promise.all([
+        apiRequest(`/parties/${code}/`),
+        apiRequest(`/parties/${code}/guests/`),
+        apiRequest(`/parties/${code}/orders/`),
+      ])
+
+      this.party = party
+      this.guests = Array.isArray(guests) ? guests : []
+      this.orders = Array.isArray(orders) ? orders : []
+      this.budget = Number(party.budget || 0)
+      this.strategy = party.strategy || 'member'
+      this.partySize = Number(party.expected_guest_count || Math.max(this.guests.length + 1, 1))
+
+      this.partyStartTimeLocal = party.party_start_time
+  ? new Date(party.party_start_time).toISOString().slice(0, 16)
+  : ''
+    },
+
+    connectWebSocket() {
+      const token = getAccessToken()
+      if (!token || !this.partyCode || this.destroyed) return
+
+      if (this.socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(this.socket.readyState)) {
+        return
+      }
+
+      const apiUrl = new URL(API_BASE, window.location.origin)
+      const protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl =
+        `${protocol}//${apiUrl.host}/ws/party/${encodeURIComponent(this.partyCode)}/` +
+        `?token=${encodeURIComponent(token)}`
+
+      this.socket = new WebSocket(wsUrl)
+
+      this.socket.onopen = async () => {
+        this.socketRetryCount = 0
+        // REST remains the source of truth after reconnect.
+        try {
+          await this.refreshAuthoritativeState()
+        } catch (error) {
+          console.error('Post-WebSocket reconnect refresh failed:', error)
+        }
+      }
+
+      this.socket.onmessage = async () => {
+        // Socket events are invalidation signals; authoritative state comes from REST.
+        try {
+          await this.refreshAuthoritativeState()
+        } catch (error) {
+          console.error('Realtime refresh failed:', error)
+        }
+      }
+
+      this.socket.onerror = () => {
+        if (this.socket) this.socket.close()
+      }
+
+      this.socket.onclose = () => {
+        if (this.destroyed) return
+        const delay = Math.min(1000 * (2 ** this.socketRetryCount), 30000)
+        this.socketRetryCount += 1
+        this.socketRetryTimer = setTimeout(() => this.connectWebSocket(), delay)
+      }
+    },
+
+    prefLabel(code) {
+      return CODE_TO_PREF[code] || 'Any'
+    },
+
+    prefKey(label) {
+      return PREF_TO_CODE[label] || 'any'
+    },
 
     async saveBudget() {
-      try { await updateParty(this.party.code, { budget: this.budget }) } catch { /* keep local value */ }
+      const nextBudget = Number(this.budget)
+      if (!Number.isFinite(nextBudget) || nextBudget <= 0) {
+        this.budget = Number(this.party?.budget || 0)
+        return
+      }
+
+      try {
+        this.party = await apiRequest(`/parties/${this.partyCode}/`, {
+          method: 'PATCH',
+          body: { budget: nextBudget },
+        })
+        this.budget = Number(this.party.budget)
+      } catch (error) {
+        this.budget = Number(this.party?.budget || 0)
+        alert(error.message || 'Could not update budget.')
+      }
     },
+
+    async savePartyStartTime() {
+  if (!this.partyStartTimeLocal) return
+  try {
+    this.party = await apiRequest(`/parties/${this.partyCode}/`, {
+      method: 'PATCH',
+      body: { party_start_time: new Date(this.partyStartTimeLocal).toISOString() },
+    })
+  } catch (error) {
+    alert(error.message || 'Could not update party start time.')
+  }
+},
 
     async setStrategy(next) {
-      if (this.strategy === next) return
+      if (!['member', 'whole'].includes(next) || this.strategy === next) return
+
+      const previous = this.strategy
       this.strategy = next
-      try { await updateParty(this.party.code, { strategy: next }) } catch { /* non-fatal */ }
-    },
 
-    copyJoinLink() {
-      if (!this.party?.join_link) return
-      navigator.clipboard.writeText(this.party.join_link)
-      this.linkCopied = true
-      setTimeout(() => { this.linkCopied = false }, 2000)
-    },
-
-    dietaryValue(pref) {
-      return { Any: 'any', Veg: 'veg', Vegan: 'vegan', 'Non-Veg': 'non_veg', Jain: 'jain', Diabetic: 'diabetic' }[pref] || 'any'
-    },
-
-    async ensureParty() {
-      if (this.partyCode) return
       try {
-        const party = await apiRequest('/parties/', {
-          method: 'POST',
-          body: {
-            mode: 'food_delivery',
-            strategy: this.strategy,
-            occasion: this.occasion || 'House Party',
-            budget: this.budget,
-            expected_guest_count: this.partySize,
-            delivery_address: `${this.location.address}, ${this.location.city} ${this.location.pin}`,
-            status: 'active'
-          }
+        this.party = await apiRequest(`/parties/${this.partyCode}/`, {
+          method: 'PATCH',
+          body: { strategy: next },
         })
-        this.partyCode = party.code
-        this.joinLink = party.join_link
-        await this.syncHostGuest()
-      } catch (e) {
-        this.saveError = e.message
+      } catch (error) {
+        this.strategy = previous
+        alert(error.message || 'Could not update strategy.')
       }
     },
 
-    async syncHostGuest() {
-      if (!this.partyCode || !this.hostName) return
-      const host = this.members.find(m => m.isHost)
-      if (host?.backendId) return
-      try {
-        const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, { method: 'POST', body: { name: this.hostName, dietary_pref: 'any' } })
-        if (host) host.backendId = guest.id
-      } catch {
-        // Guest may already exist from an earlier draft; continue locally.
-      }
-    },
+    async copyJoinLink() {
+  if (!this.partyCode) return
 
-  async mounted() {
-    await this.ensureParty()
-  },
+  const joinUrl = `${window.location.origin}/join/${this.partyCode}`
 
-  methods: {
-    // ── Helpers ──
-    hasOrdered(name) {
-      return this.orders.some(o => o.who === name)
-    },
+  try {
+    await navigator.clipboard.writeText(joinUrl)
 
-    async ensureParty() {
-      if (this.partyCode) return
-      try {
-        const party = await apiRequest('/parties/', {
-          method: 'POST',
-          body: {
-            mode: 'food_delivery',
-            strategy: this.strategy,
-            occasion: this.occasion || 'House Party',
-            budget: this.budget,
-            expected_guest_count: this.partySize,
-            delivery_address: `${this.location.address}, ${this.location.city} ${this.location.pin}`,
-            status: 'active'
-          }
-        })
-        this.partyCode = party.code
-        this.joinLink = party.join_link
-        await this.syncHostGuest()
-      } catch (e) {
-        this.saveError = e.message
-      }
-    },
-    orderItemsLabel(order) {
-      return order.items.map(item => `${item.qty}x ${item.name}`).join(', ')
-    },
-    prefKey(pref) {
-      const map = {
-        'Any': 'Any', 'any': 'Any', 'Any Preference': 'Any',
-        'Veg': 'Veg', 'Pure Veg': 'Veg',
-        'Vegan': 'Vegan',
-        'Non-Veg': 'Non-Veg',
-        'Jain': 'Jain',
-        'Diabetic': 'Diabetic'
-      }
-    },
+    this.linkCopied = true
 
-    async persistGuest(member) {
-      if (!this.partyCode || member.backendId) return
-      const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, {
-        method: 'POST',
-        body: {
-          name: member.name,
-          dietary_pref: this.dietaryValue(member.pref),
-          is_late: member.late,
-          late_offset_minutes: member.late ? member.lateMinutes : null
-        }
-      })
-      member.backendId = guest.id
-    },
+    setTimeout(() => {
+      this.linkCopied = false
+    }, 2000)
+  } catch (error) {
+    console.error('Could not copy join link:', error)
+    alert('Could not copy join link.')
+  }
+},
 
-    dietaryValue(pref) {
-      return { Any: 'any', Veg: 'veg', Vegan: 'vegan', 'Non-Veg': 'non_veg', Jain: 'jain', Diabetic: 'diabetic' }[pref] || 'any'
-    },
-
-    async ensureParty() {
-      if (this.partyCode) return
-      try {
-        const party = await apiRequest('/parties/', {
-          method: 'POST',
-          body: {
-            mode: 'food_delivery',
-            strategy: this.strategy,
-            occasion: this.occasion || 'House Party',
-            budget: this.budget,
-            expected_guest_count: this.partySize,
-            delivery_address: `${this.location.address}, ${this.location.city} ${this.location.pin}`,
-            status: 'active'
-          }
-        })
-        this.partyCode = party.code
-        this.joinLink = party.join_link
-        await this.syncHostGuest()
-      } catch (e) {
-        this.saveError = e.message
-      }
-    },
-
-    async syncHostGuest() {
-      if (!this.partyCode || !this.hostName) return
-      const host = this.members.find(m => m.isHost)
-      if (host?.backendId) return
-      try {
-        const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, { method: 'POST', body: { name: this.hostName, dietary_pref: 'any' } })
-        if (host) host.backendId = guest.id
-      } catch {
-        // Guest may already exist from an earlier draft; continue locally.
-      }
-    },
-
-    async persistGuest(member) {
-      if (!this.partyCode || member.backendId) return
-      const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, {
-        method: 'POST',
-        body: {
-          name: member.name,
-          dietary_pref: this.dietaryValue(member.pref),
-          is_late: member.late,
-          late_offset_minutes: member.late ? member.lateMinutes : null
-        }
-      })
-      member.backendId = guest.id
-    },
-
-    addGuest() {
-      // Reset form and open modal
-      this.newGuest = { name: '', pref: 'Any', late: false, lateMinutes: 30 }
+    addGuestOpen() {
       this.guestError = ''
+      this.newGuest = { name: '', pref: 'Any', late: false, lateMinutes: 30 }
       this.showAddGuest = true
     },
 
     async confirmAddGuest() {
-      if (!this.newGuest.name.trim()) return
+      const name = this.newGuest.name.trim()
+      if (!name) return
+
       this.savingGuest = true
       this.guestError = ''
+
       try {
-        const guest = await addGuest(this.party.code, {
-          name: this.newGuest.name.trim(),
-          dietary_pref: PREF_TO_CODE[this.newGuest.pref],
-          is_late: this.newGuest.late,
-          late_offset_minutes: this.newGuest.late ? this.newGuest.lateMinutes : null,
+        const payload = {
+          name,
+          dietary_pref: this.prefKey(this.newGuest.pref),
+          is_late: Boolean(this.newGuest.late),
+          late_offset_minutes: this.newGuest.late ? Number(this.newGuest.lateMinutes || 30) : null,
+        }
+
+        const guest = await apiRequest(`/parties/${this.partyCode}/guests/`, {
+          method: 'POST',
+          body: payload,
         })
+
         this.guests.push(guest)
         this.showAddGuest = false
-      } catch (e) {
-        this.guestError = e.body?.non_field_errors?.[0] || 'Could not add guest.'
+      } catch (error) {
+        this.guestError = error.message || 'Could not add guest.'
       } finally {
         this.savingGuest = false
       }
@@ -871,38 +927,131 @@ export default {
 
     async removeMember(id) {
       try {
-        await removeGuest(this.party.code, id)
-        this.guests = this.guests.filter(m => m.id !== id)
-        this.orders = this.orders.filter(o => o.guest !== id)
-      } catch { /* non-fatal */ }
+        await apiRequest(`/parties/${this.partyCode}/guests/${id}/`, { method: 'DELETE' })
+        this.guests = this.guests.filter((guest) => guest.id !== id)
+        this.orders = this.orders.filter((order) => order.guest !== id)
+      } catch (error) {
+        alert(error.message || 'Could not remove guest.')
+      }
     },
 
     async onGuestPrefChange(member, label) {
-      member.dietary_pref = PREF_TO_CODE[label]
-      try { await updateGuest(this.party.code, member.id, { dietary_pref: member.dietary_pref }) } catch { /* non-fatal */ }
-    },
-    async toggleLate(member, checked) {
-      member.is_late = checked
-      if (checked && !member.late_offset_minutes) member.late_offset_minutes = 30
+      const previous = member.dietary_pref
+      member.dietary_pref = this.prefKey(label)
+
       try {
-        await updateGuest(this.party.code, member.id, {
-          is_late: member.is_late, late_offset_minutes: member.late_offset_minutes,
-        })
-      } catch { /* non-fatal */ }
-    },
-    async setLateMinutes(member, value) {
-      member.late_offset_minutes = Number(value)
-      try { await updateGuest(this.party.code, member.id, { late_offset_minutes: member.late_offset_minutes }) } catch { /* non-fatal */ }
+        const updated = await apiRequest(
+          `/parties/${this.partyCode}/guests/${member.id}/`,
+          { method: 'PATCH', body: { dietary_pref: member.dietary_pref } },
+        )
+        Object.assign(member, updated)
+      } catch (error) {
+        member.dietary_pref = previous
+        alert(error.message || 'Could not update preference.')
+      }
     },
 
-    // ── Restaurant scan (Groq-filtered, via /api/ai/restaurants/) ──
-    async startOrderFlow(guestId, name, pref, isLate, lateMinutes, category) {
+    async toggleLate(member, checked) {
+      const previous = {
+        is_late: member.is_late,
+        late_offset_minutes: member.late_offset_minutes,
+        payment_method: member.payment_method,
+      }
+
+      member.is_late = checked
+      member.late_offset_minutes = checked ? Number(member.late_offset_minutes || 30) : null
+
+      try {
+        const updated = await apiRequest(
+          `/parties/${this.partyCode}/guests/${member.id}/`,
+          {
+            method: 'PATCH',
+            body: {
+              is_late: member.is_late,
+              late_offset_minutes: member.late_offset_minutes,
+              payment_method: checked ? (member.payment_method || null) : null,
+            },
+          },
+        )
+        Object.assign(member, updated)
+      } catch (error) {
+        Object.assign(member, previous)
+        alert(error.message || 'Could not update late-arrival setting.')
+      }
+    },
+
+    async setLateMinutes(member, value) {
+      const minutes = Math.max(5, Math.min(120, Number(value) || 30))
+      const previous = member.late_offset_minutes
+      member.late_offset_minutes = minutes
+
+      try {
+        const updated = await apiRequest(
+          `/parties/${this.partyCode}/guests/${member.id}/`,
+          { method: 'PATCH', body: { late_offset_minutes: minutes } },
+        )
+        Object.assign(member, updated)
+      } catch (error) {
+        member.late_offset_minutes = previous
+        alert(error.message || 'Could not update late-arrival time.')
+      }
+    },
+
+    hasOrdered(guestId) {
+      return this.orders.some((order) => order.guest === guestId)
+    },
+
+    getScheduledOrder(guestId) {
+      return this.orders.find(
+        (order) => order.guest === guestId && order.fire_time &&
+          ['pending', 'scheduled'].includes(order.status),
+      ) || null
+    },
+
+    formatFireTime(value) {
+      if (!value) return '—'
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return value
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    },
+
+    orderItemsLabel(order) {
+      return (order?.items || [])
+        .map((item) => `${item.quantity || item.qty || 1}x ${item.name}`)
+        .join(', ')
+    },
+
+    normalizeRestaurant(resto) {
+      const menu = resto.eligibleMenu || resto.eligible_menu || resto.menu || []
+      return {
+        ...resto,
+        id: resto.id ?? resto.restaurant_id,
+        name: resto.name ?? resto.restaurant_name,
+        distanceKm: resto.distanceKm ?? resto.distance_km ?? 0,
+        rating: resto.rating ?? '—',
+        deliveryTime: resto.deliveryTime ?? resto.delivery_time ?? `${resto.deliveryMins || resto.delivery_mins || 35} mins`,
+        deliveryMins: resto.deliveryMins ?? resto.delivery_mins ?? 35,
+        cuisines: resto.cuisines || [],
+        eligibleMenu: menu.map((item) => ({
+          ...item,
+          id: item.id ?? item.external_item_id,
+          price: Number(item.price ?? item.unit_price ?? 0),
+          qty: 0,
+          isVeg: Boolean(item.isVeg ?? item.is_veg),
+          isJainCompatible: Boolean(item.isJainCompatible ?? item.is_jain_compatible),
+          isDiabeticFriendly: Boolean(item.isDiabeticFriendly ?? item.is_diabetic_friendly),
+        })),
+      }
+    },
+
+    async startOrderFlow(guestId, name, pref, isLate, lateMinutes, category = null) {
       this.currentOrderingForId = guestId
       this.currentOrderingFor = name
       this.currentOrderingPref = pref || 'Any'
-      this.currentCategory = category || null
-      this.currentIsLate = isLate || false
-      this.currentLateMinutes = lateMinutes || 30
+      this.currentCategory = category
+      this.currentIsLate = Boolean(isLate)
+      this.currentLateMinutes = Number(lateMinutes || 30)
+      this.editingOrderId = null
       this.isScanning = true
       this.scannedRestaurants = []
       this.scanWidened = false
@@ -914,141 +1063,80 @@ export default {
           body: {
             pref: this.prefKey(this.currentOrderingPref),
             category: category || null,
-            guest_name: name
-          }
+            guest_name: name,
+          },
         })
-        this.scannedRestaurants = data.restaurants || []
-        this.scanWidened = data.widened || false
-      } catch {
-        // Fallback: complete restaurant + menu data, filter by pref locally
-        const allFallback = [
-          {
-            id: 'rest_001', name: 'Punjab Grill', distanceKm: 1.2, rating: 4.3,
-            deliveryTime: '30-35 mins', deliveryMins: 33, cuisines: ['North Indian', 'Punjabi'],
-            menu: [
-              { id: 'item_001', name: 'Paneer Butter Masala', price: 280, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
-              { id: 'item_002', name: 'Dal Makhani', price: 220, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-              { id: 'item_003', name: 'Chicken Tikka', price: 320, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
-              { id: 'item_004', name: 'Tandoori Roti', price: 40, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-              { id: 'item_005', name: 'Jeera Rice', price: 160, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
-            ]
-          },
-          {
-            id: 'rest_002', name: 'Barbeque Nation', distanceKm: 2.8, rating: 4.5,
-            deliveryTime: '45-50 mins', deliveryMins: 48, cuisines: ['Barbecue', 'Multi-Cuisine'],
-            menu: [
-              { id: 'item_007', name: 'Veg Seekh Kebab', price: 260, qty: 0, isVeg: true, isJainCompatible: false, isDiabeticFriendly: true },
-              { id: 'item_008', name: 'Mutton Seekh Kebab', price: 380, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
-              { id: 'item_009', name: 'Paneer Tikka', price: 300, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-              { id: 'item_010', name: 'Fish Tikka', price: 350, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
-            ]
-          },
-          {
-            id: 'rest_003', name: 'Satvic Jain Kitchen', distanceKm: 0.9, rating: 4.1,
-            deliveryTime: '25-30 mins', deliveryMins: 28, cuisines: ['Jain', 'Pure Veg'],
-            menu: [
-              { id: 'item_011', name: 'Jain Dal Baati', price: 240, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: false },
-              { id: 'item_012', name: 'Jain Paneer Sabzi', price: 210, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-              { id: 'item_013', name: 'Jain Khichdi', price: 150, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-              { id: 'item_014', name: 'Jain Chapati (4 pcs)', price: 60, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-            ]
-          },
-          {
-            id: 'rest_004', name: 'Green Bowl Vegan Co.', distanceKm: 1.8, rating: 4.2,
-            deliveryTime: '35-40 mins', deliveryMins: 38, cuisines: ['Vegan', 'Healthy'],
-            menu: [
-              { id: 'item_015', name: 'Vegan Buddha Bowl', price: 290, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-              { id: 'item_016', name: 'Tofu Stir Fry', price: 260, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-              { id: 'item_017', name: 'Multigrain Wrap', price: 180, qty: 0, isVeg: true, isJainCompatible: false, isDiabeticFriendly: true },
-            ]
-          },
-          {
-            id: 'rest_005', name: 'Spice Route Non-Veg', distanceKm: 3.5, rating: 4.4,
-            deliveryTime: '40-45 mins', deliveryMins: 42, cuisines: ['Mughlai', 'Non-Veg'],
-            menu: [
-              { id: 'item_019', name: 'Butter Chicken', price: 340, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: false },
-              { id: 'item_020', name: 'Mutton Biryani', price: 420, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: false },
-              { id: 'item_021', name: 'Egg Curry', price: 220, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
-              { id: 'item_022', name: 'Rumali Roti', price: 35, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-            ]
-          },
-          {
-            id: 'rest_006', name: 'DiabEats Health Kitchen', distanceKm: 2.2, rating: 4.0,
-            deliveryTime: '30-35 mins', deliveryMins: 32, cuisines: ['Healthy', 'Low GI'],
-            menu: [
-              { id: 'item_023', name: 'Millets Bowl', price: 200, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-              { id: 'item_024', name: 'Grilled Chicken Salad', price: 280, qty: 0, isVeg: false, isJainCompatible: false, isDiabeticFriendly: true },
-              { id: 'item_025', name: 'Quinoa Khichdi', price: 220, qty: 0, isVeg: true, isJainCompatible: true, isDiabeticFriendly: true },
-            ]
-          },
-        ]
 
-        // ── Correct preference filtering ──
-        const prefLower = (this.currentOrderingPref || 'any').toLowerCase().trim()
-
-        const filterMenu = (menu) => {
-          if (prefLower === 'jain') return menu.filter(i => i.isJainCompatible)
-          if (prefLower === 'veg' || prefLower === 'pure veg') return menu.filter(i => i.isVeg)
-          if (prefLower === 'vegan') return menu.filter(i => i.isVeg)
-          if (prefLower === 'diabetic') return menu.filter(i => i.isDiabeticFriendly)
-          // Non-Veg, Any → all items allowed
-          return menu
-        }
-
-        this.scannedRestaurants = allFallback
-          .map(r => {
-            const eligible = filterMenu(r.menu)
-            return eligible.length > 0 ? { ...r, eligibleMenu: eligible } : null
-          })
-          .filter(Boolean)
-          .sort((a, b) => a.distanceKm - b.distanceKm)
+        this.scannedRestaurants = (data?.restaurants || []).map(this.normalizeRestaurant)
+        this.scanWidened = Boolean(data?.widened)
+      } catch (error) {
+        console.error('Restaurant scan failed:', error)
+        this.scanWidened = true
+        this.scannedRestaurants = []
       } finally {
         this.isScanning = false
       }
     },
 
     selectRestaurant(resto) {
+      const normalized = this.normalizeRestaurant(resto)
+
+      this.editingOrderId = this.currentOrderingForId == null
+    ? (this.orders.find(
+        (o) => !o.guest && o.restaurant_name === normalized.name
+      )?.id || null)
+    : (this.orders.find((o) => o.guest === this.currentOrderingForId)?.id || null)
+
+
       this.showAiScan = false
-      this.tempRestaurantObj = resto
-      this.tempRestaurant = resto.name
-      this.tempETA = resto.deliveryMins || 35
-      this.tempDistanceKm = resto.distanceKm
-      this.tempMenuSelection = (resto.eligibleMenu || []).map(item => ({ ...item, qty: 0 }))
-      setTimeout(() => { this.showMenu = true }, 250)
+      this.tempRestaurantObj = normalized
+      this.tempRestaurant = normalized.name
+      this.tempETA = Number(normalized.deliveryMins || 35)
+      this.tempDistanceKm = normalized.distanceKm
+      this.tempMenuSelection = normalized.eligibleMenu.map((item) => ({ ...item, qty: 0 }))
+      this.showMenu = true
     },
 
-    updateMenuQty(idx, change) {
-      const newQty = this.tempMenuSelection[idx].qty + change
-      if (newQty >= 0) {
-        this.tempMenuSelection[idx] = { ...this.tempMenuSelection[idx], qty: newQty }
-        this.tempMenuSelection = [...this.tempMenuSelection]
-      }
+    updateMenuQty(index, change) {
+      const item = this.tempMenuSelection[index]
+      if (!item) return
+      const qty = Math.max(0, Number(item.qty || 0) + change)
+      this.tempMenuSelection[index] = { ...item, qty }
+      this.tempMenuSelection = [...this.tempMenuSelection]
     },
 
     buildOrderPayload(selected) {
-      const itemTotal = selected.reduce((s, i) => s + i.price * i.qty, 0)
+      const itemTotal = selected.reduce(
+        (sum, item) => sum + Number(item.price) * Number(item.qty),
+        0,
+      )
+
       return {
         guest: this.currentOrderingForId,
         placed_by: 'host',
-        restaurant_id: this.tempRestaurantObj?.id || '',
+        restaurant_id: String(this.tempRestaurantObj?.id || ''),
         restaurant_name: this.tempRestaurant,
         delivery_fee: 30,
         taxes: Math.round(itemTotal * 0.05),
-        items: selected.map(i => ({
-          external_item_id: String(i.id),
-          name: i.name,
-          unit_price: i.price,
-          quantity: i.qty,
-          is_veg: !!i.isVeg,
-          is_jain_compatible: !!i.isJainCompatible,
-          is_diabetic_friendly: !!i.isDiabeticFriendly,
+        payment_method: this.currentIsLate ? 'online' : null,
+        items: selected.map((item) => ({
+          external_item_id: String(item.id),
+          name: item.name,
+          unit_price: Number(item.price),
+          quantity: Number(item.qty),
+          is_veg: Boolean(item.isVeg),
+          is_jain_compatible: Boolean(item.isJainCompatible),
+          is_diabetic_friendly: Boolean(item.isDiabeticFriendly),
         })),
       }
     },
 
     async confirmMenuSelection() {
-      const selected = this.tempMenuSelection.filter(i => i.qty > 0)
-      if (selected.length === 0) { alert('Please add at least one item.'); return }
+      const selected = this.tempMenuSelection.filter((item) => Number(item.qty) > 0)
+      if (!selected.length) {
+        alert('Please add at least one item.')
+        return
+      }
 
       const payload = this.buildOrderPayload(selected)
 
@@ -1056,63 +1144,95 @@ export default {
         this.pendingOrderPayload = payload
         this.showMenu = false
         await this.computeLateSchedule()
-      } else {
-        await this.placeOrder(payload)
-        this.showMenu = false
+        return
       }
+
+      const saved = await this.placeOrder(payload)
+      if (saved) this.showMenu = false
     },
 
     async placeOrder(payload) {
       this.placingOrder = true
+
       try {
-        const order = await createOrder(this.party.code, payload)
-        this.orders = [order, ...this.orders.filter(o => o.id !== order.id)]
+        let order
+        if (this.editingOrderId) {
+          order = await apiRequest(
+            `/parties/${this.partyCode}/orders/${this.editingOrderId}/`,
+            { method: 'PATCH', body: payload },
+          )
+        } else {
+          order = await apiRequest(`/parties/${this.partyCode}/orders/`, {
+            method: 'POST',
+            body: payload,
+          })
+        }
+
+        await this.refreshAuthoritativeState()
+        this.editingOrderId = null
         return order
-      } catch (e) {
-        alert(e.body?.detail || 'Could not place the order.')
+      } catch (error) {
+        alert(error.message || 'Could not place the order.')
         return null
       } finally {
         this.placingOrder = false
       }
     },
 
+    partyClock() {
+      const source = this.party?.party_start_time
+      if (!source) return null
+      const date = new Date(source)
+      if (Number.isNaN(date.getTime())) return null
+      return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+    },
+
     async computeLateSchedule() {
       this.lateScheduleLoading = true
       this.showLateSchedule = true
+
+      const partyTime = this.partyClock()
+      const guestName = this.currentOrderingFor
+
       try {
+        if (!partyTime) throw new Error('Party start time is not set.')
+
         const data = await apiRequest('/ai/schedule-late-order/', {
           method: 'POST',
           body: {
-            guest_name: orderData.who,
+            guest_name: guestName,
             pref: this.currentOrderingPref,
             late_minutes: this.currentLateMinutes,
-            party_time: this.partyTime,
-            restaurant_id: orderData.restaurant_id,
-            items: orderData.items.map(i => ({ id: i.id, qty: i.qty }))
-          }
+            party_time: partyTime,
+            restaurant_id: this.pendingOrderPayload?.restaurant_id,
+            items: (this.pendingOrderPayload?.items || []).map((item) => ({
+              id: item.external_item_id,
+              qty: item.quantity,
+            })),
+          },
         })
-        // Compute arrival time display
-        const [h, m] = this.partyTime.split(':').map(Number)
-        const arrivalDate = new Date(2000, 0, 1, h, m + this.currentLateMinutes)
-        const arrivalStr = `${String(arrivalDate.getHours()).padStart(2,'0')}:${String(arrivalDate.getMinutes()).padStart(2,'0')}`
 
         this.lateScheduleData = {
           ...data,
-          arrival_time: arrivalStr,
-          late_minutes: this.currentLateMinutes
+          guest_name: data?.guest_name || guestName,
+          late_minutes: data?.late_minutes ?? this.currentLateMinutes,
+          delivery_mins: data?.delivery_mins ?? this.tempETA,
         }
-      } catch {
-        // Fallback computation
-        const [h, m] = this.partyTime.split(':').map(Number)
-        const arrivalDate = new Date(2000, 0, 1, h, m + this.currentLateMinutes)
-        const fireDate = new Date(2000, 0, 1, arrivalDate.getHours(), arrivalDate.getMinutes() - (this.tempETA || 35))
+      } catch (error) {
+        const start = this.party?.party_start_time
+          ? new Date(this.party.party_start_time)
+          : new Date()
+        const arrival = new Date(start.getTime() + this.currentLateMinutes * 60000)
+        const fire = new Date(arrival.getTime() - Number(this.tempETA || 35) * 60000)
+
         this.lateScheduleData = {
-          guest_name: orderData.who,
+          guest_name: guestName,
           late_minutes: this.currentLateMinutes,
-          fire_at: `${String(fireDate.getHours()).padStart(2,'0')}:${String(fireDate.getMinutes()).padStart(2,'0')}`,
-          reasoning: `Order fires ${this.tempETA} mins before ${orderData.who} arrives.`,
-          delivery_mins: this.tempETA,
-          arrival_time: `${String(arrivalDate.getHours()).padStart(2,'0')}:${String(arrivalDate.getMinutes()).padStart(2,'0')}`
+          delivery_mins: Number(this.tempETA || 35),
+          fire_at: fire.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          reasoning: this.party?.party_start_time
+            ? `Order is timed ${this.tempETA || 35} minutes before the guest's expected arrival.`
+            : 'Party start time is not set yet; backend scheduling will remain authoritative.',
         }
       } finally {
         this.lateScheduleLoading = false
@@ -1120,207 +1240,182 @@ export default {
     },
 
     async confirmLateSchedule() {
-      if (!this.pendingOrderPayload) { this.showLateSchedule = false; return }
-      const [hh, mm] = (this.lateScheduleData.fire_at || '00:00').split(':').map(Number)
-      const fireDate = new Date(this.party.party_start_time || Date.now())
-      if (!Number.isNaN(hh)) fireDate.setHours(hh, mm || 0, 0, 0)
+      if (!this.pendingOrderPayload) {
+        this.showLateSchedule = false
+        return
+      }
 
-      const payload = { ...this.pendingOrderPayload, status: 'scheduled', fire_time: fireDate.toISOString() }
-      await this.placeOrder(payload)
-      this.pendingOrderPayload = null
-      this.showLateSchedule = false
-    },
-
-    // ── Checkout: merge check -> budget check -> finalize ──
-    async openCheckout() {
-      await this.runMergeCheck()
-    },
-
-    ordersForAi() {
-      return this.orders.map(o => ({
-        who: o.guest_name || this.hostName,
-        restaurant: o.restaurant_name,
-        items: o.items.map(i => ({ name: i.name, price: i.unit_price, qty: i.quantity })),
-        itemTotal: o.item_total,
-      }))
+      // fire_time/status are server-controlled. The backend derives them from
+      // party_start_time + guest late offset + restaurant preparation time.
+      const saved = await this.placeOrder(this.pendingOrderPayload)
+      if (saved) {
+        this.pendingOrderPayload = null
+        this.showLateSchedule = false
+      }
     },
 
     async runMergeCheck() {
       this.mergeLoading = true
       this.showMerge = true
+
       try {
         const data = await apiRequest('/ai/merge-check/', {
           method: 'POST',
-          body: { orders: this.orders }
+          body: { orders: this.ordersForAi() },
         })
-        this.mergeData = { has_merges: data.has_merges || false, merges: data.merges || [] }
-      } catch {
+        this.mergeData = {
+          has_merges: Boolean(data?.has_merges),
+          merges: data?.merges || [],
+        }
+      } catch (error) {
+        console.error('Merge check failed:', error)
         this.mergeData = { has_merges: false, merges: [] }
       } finally {
         this.mergeLoading = false
       }
     },
 
-    skipMerge() { this.showMerge = false; this.runBudgetCheck() },
+    ordersForAi() {
+      return this.orders.map((order) => ({
+        who: order.guest_name || this.hostName,
+        restaurant: order.restaurant_name,
+        restaurant_id: order.restaurant_id,
+        items: (order.items || []).map((item) => ({
+          name: item.name,
+          price: item.unit_price,
+          qty: item.quantity,
+        })),
+        itemTotal: order.item_total,
+      }))
+    },
+
+    async openCheckout() {
+      if (!this.orders.length) {
+        alert('Place at least one order before checkout.')
+        return
+      }
+      await this.runMergeCheck()
+    },
+
+    skipMerge() {
+      this.showMerge = false
+      this.runBudgetCheck()
+    },
 
     async runBudgetCheck() {
       this.showMerge = false
       this.budgetGuardLoading = true
       this.showBudgetGuard = true
+
       try {
         const data = await apiRequest('/ai/budget-check/', {
           method: 'POST',
           body: {
-            budget: this.budget,
+            budget: Number(this.budget),
             current_total: this.billFinalTotal,
-            guests: this.members.map(m => ({ name: m.name, pref: m.pref })),
-            current_orders: this.orders
-          }
+            guests: this.guests.map((guest) => ({
+              name: guest.name,
+              pref: this.prefLabel(guest.dietary_pref),
+            })),
+            current_orders: this.ordersForAi(),
+          },
         })
-        this.budgetGuardData = data
-      } catch {
-        // Fallback: simple local check
+        this.budgetGuardData = data || {}
+      } catch (error) {
+        console.error('Budget check failed:', error)
         this.budgetGuardData = {
           status: this.isOverBudget ? 'exceeded' : 'ok',
-          remaining: this.budgetLeft, exceeded_by: this.isOverBudget ? Math.abs(this.budgetLeft) : 0, suggestions: [],
+          remaining: Math.max(this.budgetLeft, 0),
+          exceeded_by: this.isOverBudget ? Math.abs(this.budgetLeft) : 0,
+          suggestions: [],
         }
       } finally {
         this.budgetGuardLoading = false
       }
     },
 
-    proceedToPayment() { this.showBudgetGuard = false; this.isProcessing = false; this.showCheckout = true },
-
-    async savePartyOrders() {
-      await this.ensureParty()
-      if (!this.partyCode) return
-      for (const member of this.members.filter(m => !m.isHost)) {
-        await this.persistGuest(member).catch(() => null)
-      }
-      for (const order of this.orders) {
-        if (order.backendId) continue
-        const member = this.members.find(m => m.name === order.who)
-        const items = order.items.map(i => ({
-          external_item_id: String(i.id || i.external_item_id || i.name),
-          name: i.name,
-          unit_price: Number(i.price || i.unit_price || 0),
-          quantity: Number(i.qty || i.quantity || 1),
-          is_veg: Boolean(i.isVeg || i.is_veg),
-          is_jain_compatible: Boolean(i.isJainCompatible || i.is_jain_compatible),
-          is_diabetic_friendly: Boolean(i.isDiabeticFriendly || i.is_diabetic_friendly),
-        }))
-        const saved = await apiRequest(`/parties/${this.partyCode}/orders/`, {
-          method: 'POST',
-          body: {
-            guest: member?.backendId || null,
-            placed_by: 'host',
-            restaurant_id: String(order.restaurant_id || order.restaurant),
-            restaurant_name: order.restaurant,
-            payment_method: order.isLate ? 'online' : null,
-            items
-          }
-        }).catch(() => null)
-        if (saved?.id) order.backendId = saved.id
-      }
+    proceedToPayment() {
+      this.showBudgetGuard = false
+      this.showCheckout = true
     },
 
     async savePartyOrders() {
-      await this.ensureParty()
-      if (!this.partyCode) return
-      for (const member of this.members.filter(m => !m.isHost)) {
-        await this.persistGuest(member).catch(() => null)
-      }
-      for (const order of this.orders) {
-        if (order.backendId) continue
-        const member = this.members.find(m => m.name === order.who)
-        const items = order.items.map(i => ({
-          external_item_id: String(i.id || i.external_item_id || i.name),
-          name: i.name,
-          unit_price: Number(i.price || i.unit_price || 0),
-          quantity: Number(i.qty || i.quantity || 1),
-          is_veg: Boolean(i.isVeg || i.is_veg),
-          is_jain_compatible: Boolean(i.isJainCompatible || i.is_jain_compatible),
-          is_diabetic_friendly: Boolean(i.isDiabeticFriendly || i.is_diabetic_friendly),
-        }))
-        const saved = await apiRequest(`/parties/${this.partyCode}/orders/`, {
-          method: 'POST',
-          body: {
-            guest: member?.backendId || null,
-            placed_by: 'host',
-            restaurant_id: String(order.restaurant_id || order.restaurant),
-            restaurant_name: order.restaurant,
-            payment_method: order.isLate ? 'online' : null,
-            items
-          }
-        }).catch(() => null)
-        if (saved?.id) order.backendId = saved.id
-      }
-    },
-
-    async savePartyOrders() {
-      await this.ensureParty()
-      if (!this.partyCode) return
-      for (const member of this.members.filter(m => !m.isHost)) {
-        await this.persistGuest(member).catch(() => null)
-      }
-      for (const order of this.orders) {
-        if (order.backendId) continue
-        const member = this.members.find(m => m.name === order.who)
-        const items = order.items.map(i => ({
-          external_item_id: String(i.id || i.external_item_id || i.name),
-          name: i.name,
-          unit_price: Number(i.price || i.unit_price || 0),
-          quantity: Number(i.qty || i.quantity || 1),
-          is_veg: Boolean(i.isVeg || i.is_veg),
-          is_jain_compatible: Boolean(i.isJainCompatible || i.is_jain_compatible),
-          is_diabetic_friendly: Boolean(i.isDiabeticFriendly || i.is_diabetic_friendly),
-        }))
-        const saved = await apiRequest(`/parties/${this.partyCode}/orders/`, {
-          method: 'POST',
-          body: {
-            guest: member?.backendId || null,
-            placed_by: 'host',
-            restaurant_id: String(order.restaurant_id || order.restaurant),
-            restaurant_name: order.restaurant,
-            payment_method: order.isLate ? 'online' : null,
-            items
-          }
-        }).catch(() => null)
-        if (saved?.id) order.backendId = saved.id
+      // Orders are persisted at placement time. "Save Draft" therefore only
+      // refreshes from Django so the UI cannot drift from server state.
+      try {
+        await this.refreshAuthoritativeState()
+      } catch (error) {
+        alert(error.message || 'Could not refresh the saved party.')
       }
     },
 
     async processPayment() {
       this.isProcessing = true
-      await this.savePartyOrders()
-      setTimeout(() => {
-        this.showCheckout = false
+      try {
+        await this.refreshAuthoritativeState()
         this.generateWhatsAppMessage()
+        this.showCheckout = false
         this.showSuccess = true
+      } catch (error) {
+        alert(error.message || 'Could not finalize the party plan.')
+      } finally {
         this.isProcessing = false
-      }, 800)
+      }
     },
+
+    async runWholeSumOptimize() {
+  this.isScanning = true
+  this.showAiScan = true
+  try {
+    const splits = {}
+    this.guests.forEach(g => { splits[g.dietary_pref] = (splits[g.dietary_pref] || 0) + 1 })
+    const data = await apiRequest('/ai/whole-sum-optimize/', {
+      method: 'POST',
+      body: { guest_count: this.partySize, budget: this.budget, dietary_splits: splits },
+    })
+    const payload = {
+      guest: null, placed_by: 'host', restaurant_id: data.restaurant_id,
+      restaurant_name: data.restaurant_name, delivery_fee: 30,
+      taxes: Math.round(data.items.reduce((s,i)=>s+i.price*i.quantity,0)*0.05),
+      items: data.items.map(i => ({
+        external_item_id: String(i.item_id), name: i.name,
+        unit_price: Number(i.price), quantity: Number(i.quantity),
+        is_veg: false, is_jain_compatible: false, is_diabetic_friendly: false,
+      })),
+    }
+    await this.placeOrder(payload)
+  } catch (e) {
+    alert(e.message || 'Whole-sum optimization failed.')
+  } finally {
+    this.isScanning = false
+    this.showAiScan = false
+  }
+},
 
     generateWhatsAppMessage() {
-      let msg = `🎉 *PARTY DETAILS* 🎉\n\n`
-      msg += `👑 *Host:* ${this.hostName}\n`
-      if (this.party.occasion) msg += `🎊 *Occasion:* ${this.party.occasion}\n\n`
-      msg += `🍕 *Orders:*\n`
-      this.orders.forEach(o => {
-        const itemsStr = o.items.map(i => i.name).join(', ')
-        const lateTag = o.status === 'scheduled' ? ' ⏰ (Scheduled)' : ''
-        msg += `• ${o.guest_name || this.hostName}${lateTag} → ${itemsStr} (${o.restaurant_name})\n`
+      let message = `🎉 *PARTY DETAILS* 🎉\n\n`
+      message += `👑 *Host:* ${this.hostName}\n`
+      if (this.party?.occasion) message += `🎊 *Occasion:* ${this.party.occasion}\n`
+      message += `\n🍕 *Orders:*\n`
+
+      this.orders.forEach((order) => {
+        const items = (order.items || [])
+          .map((item) => `${item.quantity}x ${item.name}`)
+          .join(', ')
+        const scheduled = order.fire_time ? ' ⏰' : ''
+        message += `• ${order.guest_name || this.hostName}${scheduled} → ${items} (${order.restaurant_name})\n`
       })
-      msg += `\n💰 *Total:* ₹${this.billFinalTotal}`
-      const headcount = this.guests.length + 1
-      const perHead = headcount > 0 ? Math.round(this.billFinalTotal / headcount) : 0
-      msg += `\n🔗 *Split (₹${perHead}/person):* settle up outside the app — Host My Party never touches payments.\n`
-      if (this.party.join_link) msg += `\n🔗 Join link for late-comers: ${this.party.join_link}\n`
-      this.whatsappMessage = msg
+
+      message += `\n💰 *Total:* ₹${this.billFinalTotal}`
+      const headcount = Math.max(this.guests.length + 1, 1)
+      message += `\n🔗 *Split (~₹${Math.round(this.billFinalTotal / headcount)}/person):* settle outside the app.`
+      if (this.party?.join_link) message += `\n\n👥 Join link: ${this.party.join_link}`
+
+      this.whatsappMessage = message
     },
 
-    copyShareText() {
-      navigator.clipboard.writeText(this.whatsappMessage)
+    async copyShareText() {
+      await navigator.clipboard.writeText(this.whatsappMessage)
       this.copied = true
       setTimeout(() => { this.copied = false }, 2000)
     },
@@ -1328,8 +1423,8 @@ export default {
     resetAll() {
       this.showSuccess = false
       this.$router.push('/')
-    }
-  }
+    },
+  },
 }
 </script>
 
@@ -1342,3 +1437,6 @@ export default {
   z-index: 1050; padding: 1rem 0;
 }
 </style>
+
+
+

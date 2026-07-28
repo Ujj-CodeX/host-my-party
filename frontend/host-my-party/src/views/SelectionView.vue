@@ -1,3 +1,4 @@
+
 <template>
   <div class="selection-section">
     <div class="container">
@@ -108,35 +109,110 @@ import { createParty } from '@/api/party'
 
 export default {
   name: 'SelectionView',
+
   data() {
-    return { creating: false, error: '' }
-  },
-  computed: {
-    // Scope note from the docs (Section 4/5.1): hostName is the logged-in
-    // User's own name once Party.host stops being client-suppliable —
-    // SelectionView itself doesn't need it for the create call, only for
-    // display, so a lightweight guess from the query keeps this page
-    // working even before Orchestrator fetches the full party+host object.
-    hostName() { return this.$route.query.hostName || 'Host' },
-    budget() { return this.$route.query.budget || 0 },
-    guestCount() { return this.$route.query.guestCount || 0 },
-    occasion() { return this.$route.query.occasion || 'Event' }
-  },
-  methods: {
-    selectMode(mode) {
-      if (mode === 'food' || mode === 'dineout') {
-        this.$router.push({
-          path: mode === 'food' ? '/orchestrator' : '/dineout',
-          query: {
-            hostName: this.hostName,
-            budget: this.budget,
-            guestCount: this.guestCount,
-            occasion: this.occasion
-          }
-        })
-      }
+    return {
+      hostName: '',
+      budget: '',
+      guestCount: '',
+      occasion: '',
+      creating: false,
+      error: '',
     }
-  }
+  },
+  created() {
+  this.hostName = this.$route.query.hostName || 'Host'
+  this.budget = this.$route.query.budget || ''
+  this.guestCount = this.$route.query.guestCount || ''
+  this.occasion = this.$route.query.occasion || 'Event'
+},
+
+  methods: {
+    async selectMode(mode) {
+      if (this.creating) return
+
+      // Exact values defined by Django Party.Mode
+      if (!['food_delivery', 'dineout'].includes(mode)) {
+        this.error = 'Invalid party mode.'
+        return
+      }
+
+      const budget = Number(this.budget)
+      const expectedGuestCount = Number(this.guestCount)
+
+      if (!Number.isFinite(budget) || budget <= 0) {
+        this.error = 'Please enter a valid budget.'
+        return
+      }
+
+      if (
+        !Number.isInteger(expectedGuestCount) ||
+        expectedGuestCount <= 0
+      ) {
+        this.error = 'Please enter a valid guest count.'
+        return
+      }
+
+      this.creating = true
+      this.error = ''
+
+      try {
+        const payload = {
+          mode,
+          occasion: this.occasion?.trim() || '',
+          budget,
+          expected_guest_count: expectedGuestCount,
+        }
+
+        /*
+         * Django requires strategy for food_delivery.
+         *
+         * Exact backend values:
+         *   member = Member-wise
+         *   whole  = Whole Party
+         *
+         * SelectionView currently doesn't collect strategy,
+         * so use member-wise as the default.
+         */
+        if (mode === 'food_delivery') {
+          payload.strategy = 'member'
+        }
+
+        const party = await createParty(payload)
+
+        // Backend PartyDetailSerializer returns `code`
+        const partyCode = party?.code
+
+        if (!partyCode) {
+          throw new Error(
+            'Party was created but backend did not return a party code.'
+          )
+        }
+
+        // Store only the identifier needed by the next page.
+        // Party data itself remains authoritative in Django.
+        if (mode === 'food_delivery') {
+          await this.$router.push({
+            path: '/orchestrator',
+            query: { partyCode },
+          })
+        } else {
+          await this.$router.push({
+            path: '/dineout',
+            query: { partyCode },
+          })
+        }
+      } catch (err) {
+        console.error('Party creation failed:', err)
+
+        this.error =
+          err?.message ||
+          'Unable to create the party. Please try again.'
+      } finally {
+        this.creating = false
+      }
+    },
+  },
 }
 </script>
 
@@ -238,3 +314,10 @@ export default {
   to { transform: translateY(-6px); }
 }
 </style>
+
+
+
+
+
+
+
