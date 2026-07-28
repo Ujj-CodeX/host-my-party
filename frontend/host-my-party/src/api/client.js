@@ -1,3 +1,4 @@
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 const ACCESS_TOKEN_KEY = 'hostMyParty.accessToken'
 const USER_KEY = 'hostMyParty.user'
@@ -122,3 +123,6 @@ export const authApi = {
 }
 
 export { API_BASE }
+
+
+

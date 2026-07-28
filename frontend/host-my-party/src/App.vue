@@ -1,31 +1,76 @@
+
+
+
+
 <template>
   <div>
     <!-- Global Navbar -->
     <nav class="navbar swiggy-nav py-3">
       <div class="container">
-        <a class="navbar-brand fw-bold d-flex align-items-center" href="#" @click.prevent="$router.push('/')">
-          <span class="fs-4 text-orange me-2"><i class="bi bi-box-seam-fill"></i></span>
-          SwiggyLabs
-        </a>
-        <div class="d-flex align-items-center gap-3">
-          <span class="px-3 py-1 ai-pill fw-medium d-none d-sm-inline-block">
-            <i class="bi bi-cpu-fill me-1"></i> AI Engine Active
+        <a
+          class="navbar-brand fw-bold d-flex align-items-center"
+          href="#"
+          @click.prevent="$router.push('/')"
+        >
+          <span class="fs-4 text-orange me-2">
+            <i class="bi bi-box-seam-fill"></i>
           </span>
-          <button v-if="!isAuthed" class="btn btn-sm btn-outline-orange px-3" @click="$router.push('/login')">
+          HostMyParty
+        </a>
+
+        <div class="d-flex align-items-center gap-3">
+          <span
+            class="px-3 py-1 ai-pill fw-medium d-none d-sm-inline-block"
+          >
+            <i class="bi bi-cpu-fill me-1"></i>
+            AI Engine Active
+          </span>
+
+          <!-- Logged OUT -->
+          <button
+            v-if="!isAuthed"
+            class="btn btn-sm btn-outline-orange px-3"
+            @click="$router.push('/login')"
+          >
             Login
           </button>
-          <button v-else class="rounded-circle bg-light d-flex align-items-center justify-content-center border profile-button"
-            title="Open profile" @click="$router.push('/profile')">
-            <i class="bi bi-person-fill text-muted"></i>
-          </button>
+
+          <!-- Logged IN -->
+          <template v-else>
+            <button
+              class="rounded-circle bg-light d-flex align-items-center justify-content-center border profile-button"
+              title="Open profile"
+              @click="$router.push('/profile')"
+            >
+              <i class="bi bi-person-fill text-muted"></i>
+            </button>
+
+            <button
+              class="btn btn-sm btn-outline-orange px-3"
+              @click="doLogout"
+            >
+              Logout
+            </button>
+          </template>
         </div>
       </div>
     </nav>
 
     <!-- Floating Background Decor -->
-    <i class="bi bi-cup-straw floating-icon" style="top: 15%; left: 10%;"></i>
-    <i class="bi bi-music-note-beamed floating-icon" style="top: 40%; right: 5%;"></i>
-    <i class="bi bi-stars floating-icon" style="bottom: 20%; left: 15%;"></i>
+    <i
+      class="bi bi-cup-straw floating-icon"
+      style="top: 15%; left: 10%;"
+    ></i>
+
+    <i
+      class="bi bi-music-note-beamed floating-icon"
+      style="top: 40%; right: 5%;"
+    ></i>
+
+    <i
+      class="bi bi-stars floating-icon"
+      style="bottom: 20%; left: 15%;"
+    ></i>
 
     <!-- Router View -->
     <router-view />
@@ -33,18 +78,43 @@
 </template>
 
 <script>
-import { isAuthenticated } from '@/api/client'
+import {
+  isAuthenticated,
+  authApi,
+} from '@/api/client'
 
 export default {
   name: 'App',
+
   data() {
-    return { isAuthed: isAuthenticated() }
+    return {
+      isAuthed: isAuthenticated(),
+    }
   },
+
   watch: {
     $route() {
       this.isAuthed = isAuthenticated()
-    }
-  }
+    },
+  },
+
+  methods: {
+    async doLogout() {
+      try {
+        await authApi.logout()
+      } catch (error) {
+        console.error('Logout API failed:', error)
+      } finally {
+        /*
+         * authApi.logout() clears the local auth session.
+         * UI state must also be updated immediately.
+         */
+        this.isAuthed = false
+
+        await this.$router.push('/login')
+      }
+    },
+  },
 }
 </script>
 
@@ -64,7 +134,9 @@ export default {
   --glass-border: rgba(255, 255, 255, 0.2);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   font-family: 'Poppins', sans-serif;
@@ -75,8 +147,13 @@ body {
   margin: 0;
 }
 
-.text-orange { color: var(--brand-orange) !important; }
-.bg-orange { background-color: var(--brand-orange) !important; }
+.text-orange {
+  color: var(--brand-orange) !important;
+}
+
+.bg-orange {
+  background-color: var(--brand-orange) !important;
+}
 
 .btn-orange {
   background-color: var(--brand-orange);
@@ -85,7 +162,11 @@ body {
   border: none;
   cursor: pointer;
 }
-.btn-orange:hover { background-color: var(--brand-orange-hover); color: white; }
+
+.btn-orange:hover {
+  background-color: var(--brand-orange-hover);
+  color: white;
+}
 
 .btn-outline-orange {
   border: 1px solid var(--brand-orange);
@@ -94,7 +175,11 @@ body {
   background: transparent;
   cursor: pointer;
 }
-.btn-outline-orange:hover { background-color: var(--brand-orange); color: white; }
+
+.btn-outline-orange:hover {
+  background-color: var(--brand-orange);
+  color: white;
+}
 
 .profile-button {
   width: 40px;
@@ -105,7 +190,7 @@ body {
 .swiggy-nav {
   background: rgba(255, 255, 255, 0.98);
   backdrop-filter: blur(10px);
-  box-shadow: 0 2px 15px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.04);
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -124,16 +209,17 @@ body {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: 16px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
   padding: 1.5rem;
 }
 
 .hover-lift {
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
+
 .hover-lift:hover {
   transform: translateY(-5px);
-  box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
   cursor: pointer;
 }
 
@@ -144,9 +230,15 @@ body {
   z-index: -1;
 }
 
-.quantity-stepper { display: flex; align-items: center; gap: 10px; }
+.quantity-stepper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .quantity-stepper button {
-  width: 32px; height: 32px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 1px solid #ccc;
   background: white;
@@ -155,16 +247,18 @@ body {
 }
 
 /* Vue Modal Overlay */
+
 .vue-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
 }
+
 .vue-modal-box {
   background: white;
   border-radius: 16px;
@@ -174,23 +268,52 @@ body {
   overflow-y: auto;
   animation: modalIn 0.3s ease;
 }
+
 @keyframes modalIn {
-  from { transform: scale(0.9); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
-.progress-bar-swiggy { background-color: var(--brand-orange); transition: width 0.4s ease; }
+.progress-bar-swiggy {
+  background-color: var(--brand-orange);
+  transition: width 0.4s ease;
+}
 
 @keyframes pulse-green {
-  0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4); }
-  70% { box-shadow: 0 0 0 10px rgba(46, 204, 113, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(46, 204, 113, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
+  }
 }
 
 @keyframes ai-scan {
-  0% { top: -10%; opacity: 0; }
-  50% { opacity: 1; }
-  100% { top: 110%; opacity: 0; }
+  0% {
+    top: -10%;
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    top: 110%;
+    opacity: 0;
+  }
 }
 
 .ai-map-card {
@@ -205,11 +328,16 @@ body {
   justify-content: center;
   color: white;
 }
+
 .ai-map-scanner {
   position: absolute;
   width: 100%;
   height: 20px;
-  background: linear-gradient(to bottom, transparent, var(--brand-orange));
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--brand-orange)
+  );
   animation: ai-scan 3s linear infinite;
 }
 
@@ -219,6 +347,7 @@ body {
   cursor: pointer;
   transition: all 0.2s;
 }
+
 .strategy-card.selected {
   border-color: var(--brand-orange);
   background-color: rgba(252, 128, 25, 0.05);
@@ -230,13 +359,38 @@ body {
   transition: all 0.2s;
   cursor: pointer;
 }
+
 .restaurant-item:hover {
   border-color: var(--brand-orange);
   background: #fffcf9;
 }
 
-.form-control:focus, .form-select:focus {
+.form-control:focus,
+.form-select:focus {
   border-color: var(--brand-orange) !important;
   box-shadow: 0 0 0 0.25rem rgba(252, 128, 25, 0.25) !important;
 }
 </style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

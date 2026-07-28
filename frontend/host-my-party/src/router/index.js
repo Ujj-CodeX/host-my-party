@@ -1,3 +1,5 @@
+
+
 import { createRouter, createWebHistory } from 'vue-router'
 import { isAuthenticated } from '@/api/client'
 import LandingView from '../views/LandingView.vue'
@@ -33,3 +35,6 @@ router.beforeEach((to) => {
 })
 
 export default router
+
+
+
