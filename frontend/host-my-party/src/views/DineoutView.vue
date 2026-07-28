@@ -283,3 +283,7 @@ export default {
 .info-pill { background: #f4f5f7; border-radius: 999px; padding: 5px 10px; font-weight: 700; }
 .success-card { border: 1px solid rgba(46, 204, 113, 0.3); }
 </style>
+       
+
+
+
