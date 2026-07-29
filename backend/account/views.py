@@ -25,9 +25,7 @@ from .services import is_rate_limited, issue_tokens_response, log_auth_attempt
 def signup_phone(request):
     phone_number = request.data.get("phone_number", "")
 
-    # Rate limiting (Section 4.4 / roadmap) — checked before touching the
-    # serializer, so a flood of signup attempts against one number/IP
-    # can't even reach validation or DB uniqueness checks.
+    
     if is_rate_limited(request, identifier=phone_number, attempt_type=AuthAttemptLog.AttemptType.SIGNUP):
         log_auth_attempt(
             request,
@@ -46,10 +44,7 @@ def signup_phone(request):
     serializer = PhoneSignupSerializer(data=request.data)
 
     if not serializer.is_valid():
-        # Logged even on a validation failure (e.g. "phone already
-        # registered") — that's still a signup *attempt*, and repeated
-        # attempts against the same phone number from different IPs is
-        # exactly the pattern Section 4.4's audit table exists to catch.
+        
         log_auth_attempt(
             request,
             identifier=phone_number,
@@ -89,9 +84,7 @@ def login_phone(request):
     phone_number = serializer.validated_data["phone_number"]
     password = serializer.validated_data["password"]
 
-    # Rate limiting (Section 4.4 / roadmap) — this is the primary
-    # brute-force target, so it's checked before the password is even
-    # compared, not just before issuing tokens.
+   
     if is_rate_limited(request, identifier=phone_number, attempt_type=AuthAttemptLog.AttemptType.LOGIN):
         log_auth_attempt(
             request,
@@ -109,11 +102,7 @@ def login_phone(request):
 
     user = User.objects.filter(phone_number=phone_number).first()
 
-    # Deliberately the SAME error message and status code whether the
-    # phone number doesn't exist at all, or it exists but the password is
-    # wrong. Distinguishing the two ("no such account" vs "wrong
-    # password") would let an attacker enumerate which phone numbers have
-    # accounts just by trying logins.
+    
     if user is None or not user.check_password(password):
         log_auth_attempt(
             request,
@@ -144,12 +133,7 @@ def login_phone(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def google_auth(request):
-    """
-    Accepts a Google ID token (obtained client-side via Google Sign-In),
-    verifies it against Google's servers, and either logs in an existing
-    Google user or creates a new one — first-time Google sign-in doubles
-    as signup (Section 4.5).
-    """
+    
     raw_token = request.data.get("id_token")
     if not raw_token:
         return Response(
@@ -157,15 +141,12 @@ def google_auth(request):
         )
 
     try:
-        # This call hits Google's servers to verify the token's signature
-        # and audience — it's what makes this trustworthy rather than
-        # just decoding a JWT blindly and believing whatever email it claims.
+        
         idinfo = google_id_token.verify_oauth2_token(
             raw_token, google_requests.Request(), settings.GOOGLE_CLIENT_ID
         )
     except ValueError:
-        # verify_oauth2_token raises ValueError for basically any problem:
-        # expired token, wrong audience, bad signature, malformed token.
+        
         log_auth_attempt(
             request,
             identifier="",
@@ -206,14 +187,7 @@ def google_auth(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def refresh_token_view(request):
-    """
-    Reads the refresh token from the httpOnly cookie (not the request
-    body — the whole point of httpOnly is that JavaScript, and therefore
-    the frontend's own request-building code, can never read it; only the
-    browser attaches it automatically). Rotates it: the old refresh token
-    is blacklisted and a new one issued, so a stolen refresh token that
-    gets used once becomes worthless (Section 4.3).
-    """
+    
     raw_refresh = request.COOKIES.get("refresh_token")
     if not raw_refresh:
         return Response(
@@ -236,10 +210,7 @@ def refresh_token_view(request):
             {"detail": "User no longer exists."}, status=status.HTTP_401_UNAUTHORIZED
         )
 
-    # Blacklist the old token before issuing a new one — requires the
-    # rest_framework_simplejwt.token_blacklist app installed and migrated.
-    # If that app isn't set up yet, .blacklist() doesn't exist and we skip
-    # it rather than hard-crashing the refresh flow over a missing table.
+    
     if hasattr(old_refresh, "blacklist"):
         old_refresh.blacklist()
 
