@@ -31,11 +31,7 @@ from .mock_swiggy import (
 
 
 class DineoutProvider(ABC):
-    """
-    The contract. Both the mock and the (future) real implementation MUST
-    implement all four methods with this exact signature — that's what
-    makes them interchangeable.
-    """
+    
 
     @abstractmethod
     def search_restaurants(self, guest_count, needs_veg=False, needs_jain=False,
@@ -58,9 +54,7 @@ class DineoutProvider(ABC):
 
 
 class MockDineoutProvider(DineoutProvider):
-    """Today's implementation — every method just delegates to the mock_swiggy
-    functions, which operate on the static RESTAURANTS list."""
-
+    
     def search_restaurants(self, guest_count, needs_veg=False, needs_jain=False,
                             max_distance_km=10.0):
         return get_dineout_restaurants(
@@ -80,15 +74,7 @@ class MockDineoutProvider(DineoutProvider):
         )
 
 
-# ---------------------------------------------------------------------------
-# THE SWAP POINT. When real Swiggy MCP credentials arrive:
-#   1. Write a RealSwiggyDineoutProvider(DineoutProvider) class in this same
-#      file (or a new real_swiggy_provider.py), implementing these same 4
-#      methods using actual Swiggy MCP tool calls instead of mock_swiggy data.
-#   2. Change the single line below to return that class instead.
-# Every view/service that already called get_dineout_provider() keeps
-# working with zero changes, because the interface never changed.
-# ---------------------------------------------------------------------------
+
 
 def get_dineout_provider() -> DineoutProvider:
     return MockDineoutProvider()

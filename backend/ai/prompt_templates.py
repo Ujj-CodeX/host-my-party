@@ -1,16 +1,7 @@
 """
 ai app — versioned prompt templates (Section 3.4).
 
-Every prompt sent to Groq is built here, not inline in views.py, and each
-builder is tagged with a version key in PROMPT_VERSIONS. GroqCallLog has
-always had a prompt_template_version column, but until now every call
-site just hardcoded "v1" into it while the prompt text itself lived
-inline in views.py and could drift without that column ever changing.
-This file is what makes prompt_template_version mean something: bump the
-version string here whenever a builder's wording changes materially, and
-old GroqCallLog rows stay honest about which wording actually produced
-them — useful when debugging "why did the AI suggest this" after a
-prompt tweak (Section 3.4's stated reason GroqCallLog exists at all).
+
 """
 
 PROMPT_VERSIONS = {

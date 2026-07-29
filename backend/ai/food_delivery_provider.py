@@ -6,10 +6,7 @@ ranking logic itself is not part of this layer, matching the same
 separation dineout_provider.py already has (adapter = raw data + order
 placement, AI ranking = layer above).
 
-Swap point: when real Swiggy Food MCP credentials arrive, write
-RealSwiggyFoodDeliveryProvider(FoodDeliveryProvider) and change the
-single line in get_food_delivery_provider(). Nothing above this file
-changes.
+
 """
 
 import secrets

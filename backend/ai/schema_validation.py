@@ -1,12 +1,7 @@
 """
 ai app — strict JSON-schema validation for every Groq response (Section 3.4).
 
-Each GroqCallLog.CallType has an exact expected shape. Groq is asked to
-reply with ONLY JSON, but LLMs still drift (extra prose, wrong field
-names, wrong types) — this is the "response parser/validator" Section
-3.4 calls for. If the parsed JSON doesn't match its schema, it's treated
-exactly like a parse failure: the caller's existing pure-Python fallback
-runs instead of the app silently trusting malformed AI output.
+
 """
 
 import json
@@ -70,15 +65,7 @@ SCHEMAS = {
 
 
 def parse_and_validate(raw_text, call_type):
-    """
-    Strips markdown fences, parses JSON, then validates against this
-    call_type's registered schema.
-
-    Returns (parsed, error_message). error_message is "" on success —
-    callers treat any non-empty error_message as "fall back to the
-    pure-Python path", the same trigger a raw json.JSONDecodeError used
-    to be, just with schema drift now caught too, not only malformed JSON.
-    """
+    
     clean = raw_text.replace("```json", "").replace("```", "").strip()
 
     try:

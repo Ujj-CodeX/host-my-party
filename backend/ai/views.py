@@ -1,14 +1,7 @@
 """
 ai app — AI Layer (Section 3.4) + parts of Business Logic Layer (Section 3.3).
 
-Every Groq call site below goes through call_groq_validated (groq_utils.py),
-which combines: (1) versioned prompt templates (prompt_templates.py), so
-GroqCallLog.prompt_template_version always matches the wording that
-actually produced a response, and (2) strict JSON-schema validation
-(schema_validation.py), so a response that parses as JSON but has the
-wrong shape is treated the same as a parse failure — the existing
-pure-Python fallback runs either way. Fallback logic itself is unchanged
-from before this pass.
+
 """
 
 import json
@@ -44,13 +37,7 @@ client = Groq(api_key=settings.GROQ_API_KEY)
 
 
 def _get_optional_party(request):
-    """
-    These endpoints aren't behind host auth yet (Section 4's JWT layer
-    isn't wired here), so this is a best-effort lookup, not an ownership
-    check — it only affects which Party a GroqCallLog row is attributed
-    to. Once these views move behind auth, this should be replaced with
-    get_owned_party(request, party_code).
-    """
+    
     party_id = request.data.get('party_id') if hasattr(request, 'data') else None
     if not party_id:
         return None
@@ -61,16 +48,7 @@ def _get_optional_party(request):
 # 1. RESTAURANT RECOMMENDATIONS
 # ─────────────────────────────────────────────
 def _filter_restaurants_via_ai(pref, category, guest_name, party=None):
-    """
-    Core Groq-filtering logic, shared by the open get_restaurants endpoint
-    and the guest-session-scoped guest_get_restaurants endpoint — same
-    filtering rules regardless of who's asking, just a different source
-    for pref/category/party.
-
-    Returns (restaurants_list, widened_bool) — widened=True means Groq's
-    response either didn't parse as JSON or failed schema validation, and
-    the pure-Python fallback filter ran instead.
-    """
+    
     prompt = restaurant_filter_prompt(pref, category, guest_name, json.dumps(RESTAURANTS, indent=2))
 
     restaurants, used_fallback, _log = call_groq_validated(
@@ -152,14 +130,7 @@ def get_restaurants(request):
 @authentication_classes([GuestSessionAuthentication])
 @permission_classes([IsValidGuestSession])
 def guest_get_restaurants(request):
-    """
-    Guest self-join flow (Section 5.3.2) — restaurant browsing scoped to
-    the AUTHENTICATED GUEST'S OWN party and dietary preference, never
-    something the client can pick. Deliberately reuses the exact same
-    filtering logic as get_restaurants (_filter_restaurants_via_ai) —
-    guests and hosts should see identically-filtered results, the only
-    difference is where pref/party come from.
-    """
+    
     guest = request.auth
 
     restaurants, widened = _filter_restaurants_via_ai(
@@ -183,14 +154,7 @@ def guest_get_restaurants(request):
 # ─────────────────────────────────────────────
 @api_view(['POST'])
 def schedule_late_order(request):
-    """
-    POST {
-        guest_name, pref, late_minutes, party_time (HH:MM),
-        restaurant_id, items (list of item ids + qty)
-    }
-    Groq computes when to fire the order so it arrives on time.
-    Stores scheduled order in Django cache.
-    """
+    
     guest_name = request.data.get('guest_name')
     pref = request.data.get('pref', 'Any')
     late_minutes = int(request.data.get('late_minutes', 30))
@@ -334,13 +298,7 @@ def budget_check(request):
 # ─────────────────────────────────────────────
 @api_view(['POST'])
 def merge_check(request):
-    """
-    POST {
-        orders: [{who, restaurant, restaurant_id, items: [{name, price, qty}], itemTotal}, ...]
-    }
-    Groq finds guests with same restaurant + same/similar items and recommends merging.
-    Returns merge suggestions for host to accept or skip.
-    """
+   
     orders = request.data.get('orders', [])
 
     if len(orders) < 2:
@@ -426,11 +384,7 @@ def plan_party(request):
 # ─────────────────────────────────────────────
 @api_view(['POST'])
 def dineout_restaurants(request):
-    """Returns Dineout restaurants filtered by party size, dietary needs,
-    location radius, and per-head budget using the mock Swiggy Dineout provider.
-    The response is intentionally frontend-friendly and can be replaced by a
-    Groq-ranked/provider-backed implementation without changing the UI contract.
-    """
+    
     guest_count = int(request.data.get('guest_count') or 1)
     budget = float(request.data.get('budget') or 0)
     max_distance_km = float(request.data.get('max_distance_km') or 10)
