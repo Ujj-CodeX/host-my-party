@@ -10,9 +10,7 @@ one to an HTTP request — so instead, the frontend connects like:
 
     ws://app.com/ws/party/XJ9K2A/?token=<access_token>
 
-and this middleware pulls the token out of the query string, validates
-it exactly like JWTAuthentication does for REST requests, and populates
-scope["user"] so PartyConsumer can check who's connecting.
+
 """
 
 from urllib.parse import parse_qs
@@ -26,9 +24,6 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 @database_sync_to_async
 def _get_user_from_token(raw_token):
-    # Local import — avoids importing the User model at module load time,
-    # before Django's app registry is guaranteed ready (this module is
-    # imported early, from asgi.py).
     from account.models import User
 
     try:

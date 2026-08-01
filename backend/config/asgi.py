@@ -1,6 +1,4 @@
 """
-config — ASGI application entrypoint.
-
 CRITICAL ORDERING: get_asgi_application() must run BEFORE anything below
 it imports app code (routing -> consumers -> models). Django's app
 registry isn't ready until get_asgi_application() has run once — importing
