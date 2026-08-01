@@ -12,11 +12,6 @@ from celery import shared_task
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def fire_order(self, order_id):
-    """
-    Fires at Order.fire_time. Imports Order/fire_order_now lazily so this
-    module can be safely imported by Celery's autodiscovery before
-    Django's app registry is guaranteed ready.
-    """
     from .models import Order
     from .services import fire_order_now
 
@@ -26,8 +21,7 @@ def fire_order(self, order_id):
         return
 
     if order.status != Order.Status.SCHEDULED:
-        # Cancelled/already fired/edited away by the time the ETA arrived
-        # — nothing to do. Avoids double-firing on retries or races.
+        
         return
 
     try:
