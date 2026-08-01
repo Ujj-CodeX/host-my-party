@@ -1,17 +1,7 @@
 """
 core app — cross-cutting concerns that don't belong to a single domain app.
 
-GroqCallLog: audit trail for every AI Layer call (Section 3.4). Every
-restaurant filter, whole-sum quantity optimization, dineout ranking, and
-scheduling suggestion goes through Groq — this table is what lets us debug
-"why did the AI suggest this" after the fact, and later measure latency/
-failure rate without re-instrumenting anything.
 
-Notification: persisted record of host/guest-facing events (e.g. Section
-5.3.4's "Host updated your order" badge). The WebSocket push (Django
-Channels) is the real-time delivery mechanism; this table is the durable
-record so a reconnecting client — or a guest who was offline — can still see
-what happened.
 """
 
 from django.conf import settings

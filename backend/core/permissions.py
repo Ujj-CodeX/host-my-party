@@ -1,9 +1,6 @@
 """
 core app — shared permission helpers used across party/orders views.
 
-core already depends on party (GroqCallLog/Notification both FK into
-Party/Guest), so this mirrors the same dependency direction rather than
-introducing a new one.
 """
 
 from rest_framework.exceptions import PermissionDenied

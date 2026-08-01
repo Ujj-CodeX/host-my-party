@@ -1,9 +1,6 @@
 """
 core app — DRF serializers.
 
-GroqCallLog is an internal debugging/audit artifact — it is intentionally
-NOT wired to any guest/host-facing endpoint. The serializer exists so an
-internal/admin dashboard can use it later without any model changes.
 """
 
 from rest_framework import serializers
