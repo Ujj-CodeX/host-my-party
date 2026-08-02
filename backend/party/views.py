@@ -100,9 +100,7 @@ def join_party(request, party_code):
 
     serializer = GuestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    # party is injected here, never trusted from the request body — same
-    # principle as every other create() in this codebase (e.g. Booking's
-    # perform_create).
+    
     guest = serializer.save(party=party)
 
     raw_token = issue_guest_session(guest)

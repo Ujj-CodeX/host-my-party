@@ -1,14 +1,7 @@
 """
 party app — DRF authentication for guest-session-token endpoints.
 
-A host authenticates with "Authorization: Bearer <jwt>" (Section 4.3).
-A guest who joined via link authenticates with a DIFFERENT scheme:
-    Authorization: GuestSession <raw_token>
 
-Using a distinct scheme name (not "Bearer") is deliberate — it stops a
-guest token and a host's JWT access token from ever being confused with
-each other in logs, in a browser's dev tools, or by a developer copy-
-pasting the wrong header while debugging.
 
 """
 
