@@ -52,9 +52,12 @@ class PhoneSignupSerializer(serializers.Serializer):
         return value
 
 
+
 class PhoneLoginSerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=15)
     password = serializers.CharField(write_only=True)
+
+
     
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):

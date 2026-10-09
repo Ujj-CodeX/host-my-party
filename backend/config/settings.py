@@ -170,3 +170,18 @@ STATIC_URL = 'static/'
 
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+# Swiggy OAuth — all values stay on the backend.
+SWIGGY_OAUTH_BASE_URL = "https://mcp.swiggy.com"
+
+SWIGGY_CLIENT_ID = os.getenv("SWIGGY_CLIENT_ID", "").strip()
+SWIGGY_REDIRECT_URI = os.getenv("SWIGGY_REDIRECT_URI", "").strip()
+
+SWIGGY_TOKEN_ENCRYPTION_KEY = os.getenv(
+    "SWIGGY_TOKEN_ENCRYPTION_KEY", ""
+).strip()
+
+PARTYNOSH_APP_URL = os.getenv(
+    "PARTYNOSH_APP_URL",
+    "https://partynosh.site",
+).rstrip("/")
