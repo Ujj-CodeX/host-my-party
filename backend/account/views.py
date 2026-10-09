@@ -1,6 +1,11 @@
+import requests
 
-
+from cryptography.fernet import InvalidToken
+from django.core.exceptions import ImproperlyConfigured
+from django.http import HttpResponseRedirect
+from django.utils import timezone
 from django.conf import settings
+
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from rest_framework import status
@@ -18,6 +23,16 @@ from .serializers import (
     UserSerializer,
 )
 from .services import is_rate_limited, issue_tokens_response, log_auth_attempt
+
+from .models import SwiggyUserCredential
+from .swiggy_crypto import decrypt_secret, encrypt_secret
+from .swiggy_oauth import ( consume_swiggy_oauth_attempt, start_swiggy_authorization)
+from datetime import timedelta
+
+
+
+
+
 
 
 @api_view(["POST"])
@@ -244,3 +259,141 @@ def update_profile(request):
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return Response(UserSerializer(request.user).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def swiggy_callback(request):
+    """Handle Swiggy's OAuth redirect securely."""
+
+    state = request.query_params.get("state", "")
+    attempt = consume_swiggy_oauth_attempt(state)
+
+    if attempt is None:
+        return _swiggy_callback_redirect("invalid_state")
+
+    if request.query_params.get("error"):
+        return _swiggy_callback_redirect("denied")
+
+    code = request.query_params.get("code")
+    if not code:
+        return _swiggy_callback_redirect("failed")
+
+    try:
+        verifier = decrypt_secret(
+            attempt.code_verifier_ciphertext
+        )
+
+        response = requests.post(
+            f"{settings.SWIGGY_OAUTH_BASE_URL.rstrip('/')}/auth/token",
+            json={
+                "grant_type": "authorization_code",
+                "code": code,
+                "code_verifier": verifier,
+                "client_id": attempt.client_id,
+                "redirect_uri": attempt.redirect_uri,
+            },
+            timeout=(5, 15),
+        )
+        response.raise_for_status()
+        token_data = response.json()
+
+        access_token = token_data.get("access_token")
+        expires_in = int(token_data.get("expires_in", 0))
+
+        if not isinstance(access_token, str) or not access_token:
+            raise ValueError("Missing access token.")
+
+        if expires_in <= 0:
+            raise ValueError("Invalid token lifetime.")
+
+        now = timezone.now()
+
+        SwiggyUserCredential.objects.update_or_create(
+            user=attempt.user,
+            defaults={
+                "client_id": attempt.client_id,
+                "access_token_ciphertext": encrypt_secret(
+                    access_token
+                ),
+                "token_type": str(
+                    token_data.get("token_type", "Bearer")
+                )[:20],
+                "scope": str(
+                    token_data.get("scope", "")
+                )[:255],
+                "expires_at": now + timedelta(
+                    seconds=expires_in
+                ),
+                "connected_at": now,
+                "revoked_at": None,
+            },
+        )
+
+    except (
+        requests.RequestException,
+        ValueError,
+        TypeError,
+        InvalidToken,
+    ):
+        return _swiggy_callback_redirect("failed")
+
+    return _swiggy_callback_redirect("success")
+
+
+def _swiggy_callback_redirect(result):
+    app_url = settings.PARTYNOSH_APP_URL.rstrip("/")
+    return HttpResponseRedirect(
+        f"{app_url}/?swiggy_connection={result}"
+    )
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def swiggy_connect(request):
+    """Start Swiggy OAuth for the authenticated HMP user."""
+
+    try:
+        authorization_url = start_swiggy_authorization(
+            request.user
+        )
+    except ImproperlyConfigured:
+        return Response(
+            {"detail": "Swiggy OAuth is not configured."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    return Response({
+        "authorization_url": authorization_url,
+        "expires_in_seconds": 300,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def swiggy_status(request):
+    """Return Swiggy connection status without exposing tokens."""
+
+    credential = SwiggyUserCredential.objects.filter(
+        user=request.user
+    ).first()
+
+    now = timezone.now()
+
+    expired = bool(
+        credential and credential.expires_at <= now
+    )
+
+    connected = bool(
+        credential
+        and credential.revoked_at is None
+        and not expired
+    )
+
+    return Response({
+        "connected": connected,
+        "expired": expired,
+        "expires_at": (
+            credential.expires_at.isoformat()
+            if credential else None
+        ),
+    })

@@ -10,3 +10,8 @@ daphne
 celery
 redis
 jsonschema
+dj-database-url
+djangorestframework-simplejwt
+google-auth
+requests
+cryptography

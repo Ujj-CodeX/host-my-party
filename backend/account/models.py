@@ -12,6 +12,8 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils import timezone
 
+from django.conf import settings
+
 
 class UserManager(BaseUserManager):
     """
@@ -157,3 +159,50 @@ class AuthAttemptLog(models.Model):
 
     def __str__(self):
         return f"{self.attempt_type}/{self.status} — {self.identifier} @ {self.timestamp:%Y-%m-%d %H:%M}"
+
+
+
+
+
+class SwiggyUserCredential(models.Model):
+    """Server-side delegated Swiggy credential for one HMP user."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="swiggy_credential"
+           
+    )
+    client_id = models.CharField(max_length=255, unique=True)
+    access_token_ciphertext = models.TextField()
+    token_type = models.CharField(max_length=20, default="Bearer")
+    scope = models.CharField(max_length=255, blank=True)
+    expires_at = models.DateTimeField()
+    connected_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    revoked_at = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return f"Swiggy connection for HMP user {self.user_id}"
+
+
+
+class SwiggyOAuthAttempt(models.Model):
+    """Short-lived, one-time state for an OAuth + PKCE transaction."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="swiggy_oauth_attempts",
+    )
+    client_id = models.CharField(max_length=255)
+    state_hash = models.CharField(max_length=64, unique=True)
+    code_verifier_hash = models.TextField()
+    redirect_uri = models.URLField(max_length=255)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "expires_at"]),
+            models.Index(fields=["expires_at", "consumed_at"]),
+        ]
+

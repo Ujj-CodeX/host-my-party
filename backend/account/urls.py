@@ -9,4 +9,8 @@ urlpatterns = [
     path("auth/refresh/", views.refresh_token_view, name="token-refresh"),
     path("auth/logout/", views.logout_view, name="logout"),
     path("auth/profile/", views.update_profile, name="update-profile"),
+    path("auth/swiggy/connect/",views.swiggy_connect,name="swiggy-connect",),
+    path("auth/swiggy/callback/",views.swiggy_callback,name="swiggy-callback",),
+    path( "auth/swiggy/status/",views.swiggy_status,name="swiggy-status",),
 ]
+
