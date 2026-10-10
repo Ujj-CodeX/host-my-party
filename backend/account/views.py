@@ -9,7 +9,7 @@ from django.conf import settings
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes,authentication_classes   
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
@@ -261,8 +261,10 @@ def update_profile(request):
     return Response(UserSerializer(request.user).data)
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+
 def swiggy_callback(request):
     """Handle Swiggy's OAuth redirect securely."""
 
@@ -335,6 +337,7 @@ def swiggy_callback(request):
         ValueError,
         TypeError,
         InvalidToken,
+        ImproperlyConfigured,
     ):
         return _swiggy_callback_redirect("failed")
 
