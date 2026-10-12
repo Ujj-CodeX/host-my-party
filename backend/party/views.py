@@ -7,6 +7,7 @@ order) needs a separate GuestSession-token authentication class and is
 deferred to the auth-endpoints stage — it's an auth mechanism, not CRUD.
 """
 
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.generics import get_object_or_404
@@ -21,8 +22,16 @@ from .serializers import (
     PartyDetailSerializer,
     PartyJoinInfoSerializer,
     PartyListSerializer,
+    SwiggyAddressCreateSerializer,
 )
 from .services import issue_guest_session
+from account.models import SwiggyUserCredential
+from django.core.exceptions import ImproperlyConfigured
+
+from ai.address_provider import (
+    AddressProviderError,
+    get_swiggy_address_provider,
+)
 
 
 class PartyListCreateView(generics.ListCreateAPIView):
@@ -113,4 +122,173 @@ def join_party(request, party_code):
             "expires_in_hours": 12,
         },
         status=status.HTTP_201_CREATED,
+    )
+
+
+
+
+@api_view(["GET", "POST", "PATCH"])
+@permission_classes([permissions.IsAuthenticated])
+def party_address(request, party_code):
+    """Manage the authenticated host's addresses for a party."""
+
+    party = get_owned_party(request, party_code)
+
+    # Get the configured address provider.
+    try:
+        provider = get_swiggy_address_provider()
+    except ImproperlyConfigured:
+        return Response(
+            {
+                "code": "address_provider_unavailable",
+                "detail": "Address provider is not configured.",
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    # Mock provider works without Swiggy OAuth.
+    # A real provider must require a valid Swiggy credential.
+    if provider.requires_swiggy_auth:
+        credential = SwiggyUserCredential.objects.filter(
+            user=request.user
+        ).first()
+
+        if credential is None or credential.revoked_at is not None:
+            return Response(
+                {
+                    "code": "swiggy_connection_required",
+                    "detail": "Connect your Swiggy account first.",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if credential.expires_at <= timezone.now():
+            return Response(
+                {
+                    "code": "swiggy_reconnect_required",
+                    "detail": "Your Swiggy connection has expired.",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+    # Fetch addresses once, for GET and PATCH validation.
+    try:
+        addresses = provider.get_addresses(request.user)
+    except AddressProviderError:
+        return Response(
+            {"detail": "Unable to retrieve saved addresses."},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    if request.method == "GET":
+        selected_address = next(
+            (
+                address
+                for address in addresses
+                if str(address.get("address_id"))
+                == str(party.swiggy_address_id)
+            ),
+            None,
+        )
+
+        return Response(
+            {
+                "party_code": party.code,
+                "selected_address_id": party.swiggy_address_id,
+                "selected_address": selected_address,
+                "addresses": addresses,
+            }
+        )
+
+    if request.method == "PATCH":
+        address_id = request.data.get("address_id")
+
+        if not isinstance(address_id, str) or not address_id.strip():
+            return Response(
+                {"detail": "address_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        selected_address = next(
+            (
+                address
+                for address in addresses
+                if str(address.get("address_id")) == address_id
+            ),
+            None,
+        )
+
+        if selected_address is None:
+            return Response(
+                {
+                    "detail": (
+                        "Address not found in this host's saved addresses."
+                    )
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        response_status = status.HTTP_200_OK
+
+    else:
+        serializer = SwiggyAddressCreateSerializer(
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            selected_address = provider.create_address(
+                request.user,
+                serializer.validated_data,
+            )
+        except AddressProviderError:
+            return Response(
+                {"detail": "Unable to create the address."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if (
+            not isinstance(selected_address, dict)
+            or not selected_address.get("address_id")
+        ):
+            return Response(
+                {"detail": "Address provider returned no address ID."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        response_status = status.HTTP_201_CREATED
+
+    # Save the selected address against this party.
+    address_id = selected_address.get("address_id")
+
+    if not address_id:
+        return Response(
+            {"detail": "Address provider returned no address ID."},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    party.swiggy_address_id = str(address_id)
+    party.delivery_address = str(
+        selected_address.get("formatted_address") or ""
+    )[:255]
+    party.delivery_lat = selected_address.get("latitude")
+    party.delivery_lng = selected_address.get("longitude")
+
+    party.save(
+        update_fields=[
+            "swiggy_address_id",
+            "delivery_address",
+            "delivery_lat",
+            "delivery_lng",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "party_code": party.code,
+            "selected_address_id": party.swiggy_address_id,
+            "selected_address": selected_address,
+        },
+        status=response_status,
     )

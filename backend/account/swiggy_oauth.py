@@ -19,7 +19,7 @@ def hash_state(state: str) -> str:
 def start_swiggy_authorization(user) -> str:
     client_id = getattr(settings, "SWIGGY_CLIENT_ID","")
     redirect_uri = getattr(settings, "SWIGGY_REDIRECT_URI","")
-    base_url = settings.SWIGGY_OAUTH_BASE_URI.rstrip("/")
+    base_url = settings.SWIGGY_OAUTH_BASE_URL.rstrip("/")
 
     if not client_id or not redirect_uri:
         raise ImproperlyConfigured(

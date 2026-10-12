@@ -11,4 +11,5 @@ urlpatterns = [
     # link a host shares (e.g. https://app.com/join/XJ9K2A), so it reads
     # as its own top-level path, not nested under the host-only prefix.
     path("join/<str:party_code>/", views.join_party, name="join-party"),
+    path("parties/<str:party_code>/address/",views.party_address,name="party-address"),
 ]

@@ -33,6 +33,8 @@ from .prompt_templates import (
     scheduling_prompt,
 )
 
+
+
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 

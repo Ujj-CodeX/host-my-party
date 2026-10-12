@@ -125,13 +125,14 @@ class PartyDetailSerializer(serializers.ModelSerializer):
             "delivery_address",
             "delivery_lat",
             "delivery_lng",
+            "swiggy_address_id",
             "party_start_time",
             "status",
             "guests",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "host", "code", "guests", "created_at", "updated_at"]
+        read_only_fields = ["id", "host", "code", "guests", "swiggy_address_id","created_at", "updated_at"]
 
     def get_join_link(self, obj):
         request = self.context.get("request")
@@ -150,4 +151,56 @@ class PartyDetailSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "strategy is required for food_delivery parties."
             )
+        return attrs
+
+
+
+class SwiggyAddressCreateSerializer(serializers.Serializer):
+    """
+    PartyNosh internal mock schema only.
+    These fields are not a verified Swiggy MCP payload.
+    """
+
+    label = serializers.CharField(max_length=80)
+    address_line1 = serializers.CharField(max_length=255)
+    address_line2 = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
+    landmark = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
+    city = serializers.CharField(max_length=120)
+    state = serializers.CharField(max_length=120)
+    postal_code = serializers.CharField(max_length=20)
+
+    latitude = serializers.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        required=False,
+        allow_null=True,
+        min_value=-90,
+        max_value=90,
+    )
+    longitude = serializers.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        required=False,
+        allow_null=True,
+        min_value=-180,
+        max_value=180,
+    )
+
+    def validate(self, attrs):
+        latitude = attrs.get("latitude")
+        longitude = attrs.get("longitude")
+
+        if (latitude is None) != (longitude is None):
+            raise serializers.ValidationError(
+                "latitude and longitude must be provided together."
+            )
+
         return attrs
