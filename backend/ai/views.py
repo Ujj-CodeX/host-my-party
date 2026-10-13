@@ -33,17 +33,36 @@ from .prompt_templates import (
     scheduling_prompt,
 )
 
-
+from rest_framework.exceptions import NotFound , PermissionDenied, ValidationError
+from rest_framework.permissions import IsAuthenticated
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 
-def _get_optional_party(request):
-    
-    party_id = request.data.get('party_id') if hasattr(request, 'data') else None
+def _get_required_owned_party(request):
+    """Require a party and verify that the authenticated user hosts it."""
+
+    if request.method in ("GET", "HEAD"):
+        party_id = request.query_params.get("party_id")
+    else:
+        party_id = request.data.get("party_id")
+
     if not party_id:
-        return None
-    return Party.objects.filter(id=party_id).first()
+        raise ValidationError({
+            "party_id": "This field is required."
+        })
+
+    try:
+        party = Party.objects.get(pk=party_id)
+    except (Party.DoesNotExist, ValueError, TypeError):
+        raise NotFound("Party not found.")
+
+    if party.host_id != request.user.id:
+        raise PermissionDenied(
+            "You do not have permission to access this party."
+        )
+
+    return party
 
 
 # ─────────────────────────────────────────────
@@ -90,22 +109,25 @@ def _filter_restaurants_via_ai(pref, category, guest_name, party=None):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def get_restaurants(request):
     """
     Groq reads the mock data, filters by guest pref + category,
     and returns distance-sorted eligible restaurants with only safe menu items.
     """
+    
     pref = request.data.get('pref', 'Any')
     category = request.data.get('category', None)
     guest_name = request.data.get('guest_name', 'Guest')
 
-    party = _get_optional_party(request)
+    party = _get_required_owned_party(request)
     restaurants, widened = _filter_restaurants_via_ai(pref, category, guest_name, party=party)
 
     return restaurants, widened
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def get_restaurants(request):
     """
     Groq reads the mock data, filters by guest pref + category,
@@ -115,7 +137,7 @@ def get_restaurants(request):
     category = request.data.get('category', None)
     guest_name = request.data.get('guest_name', 'Guest')
 
-    party = _get_optional_party(request)
+    party = _get_required_owned_party(request)
     restaurants, widened = _filter_restaurants_via_ai(pref, category, guest_name, party=party)
 
     return Response({
@@ -155,7 +177,10 @@ def guest_get_restaurants(request):
 # 2. LATE ARRIVAL SCHEDULING
 # ─────────────────────────────────────────────
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def schedule_late_order(request):
+
+    party = _get_required_owned_party(request)
     
     guest_name = request.data.get('guest_name')
     pref = request.data.get('pref', 'Any')
@@ -171,7 +196,6 @@ def schedule_late_order(request):
 
     prompt = scheduling_prompt(guest_name, party_time_str, late_minutes, delivery_mins)
 
-    party = _get_optional_party(request)
     schedule_data, used_fallback, _log = call_groq_validated(
         client,
         call_type=GroqCallLog.CallType.SCHEDULING,
@@ -196,7 +220,8 @@ def schedule_late_order(request):
         }
 
     # Store in cache (key: scheduled_orders list)
-    scheduled = cache.get('scheduled_orders', [])
+    cache_key = f"scheduled_orders:{party.id}"
+    scheduled = cache.get(cache_key, [])
     order_entry = {
         "guest_name": guest_name,
         "pref": pref,
@@ -210,7 +235,7 @@ def schedule_late_order(request):
         "status": "scheduled"
     }
     scheduled.append(order_entry)
-    cache.set('scheduled_orders', scheduled, timeout=3600)
+    cache.set(cache_key, scheduled, timeout=3600)
 
     return Response({
         "success": True,
@@ -222,17 +247,29 @@ def schedule_late_order(request):
     })
 
 
-@api_view(['GET'])
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def get_scheduled_orders(request):
-    """Returns all scheduled late-arrival orders from cache."""
-    scheduled = cache.get('scheduled_orders', [])
-    return Response({"success": True, "scheduled_orders": scheduled})
+    """Return scheduled orders belonging only to the host's party."""
+
+    party = _get_required_owned_party(request)
+
+    cache_key = f"scheduled_orders:{party.id}"
+    scheduled = cache.get(cache_key, [])
+
+    return Response({
+        "success": True,
+        "scheduled_orders": scheduled,
+    })
 
 
 # ─────────────────────────────────────────────
 # 3. BUDGET GUARDIAN
 # ─────────────────────────────────────────────
+
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def budget_check(request):
     """
     POST {
@@ -243,6 +280,8 @@ def budget_check(request):
     }
     Groq checks budget health and recommends upsell items if headroom > 200.
     """
+    party = _get_required_owned_party(request)
+
     budget = float(request.data.get('budget', 0))
     current_total = float(request.data.get('current_total', 0))
     guests = request.data.get('guests', [])
@@ -270,7 +309,7 @@ def budget_check(request):
             "message": "Budget on track. Nothing extra to recommend."
         })
 
-    party = _get_optional_party(request)
+    
     result, used_fallback, _log = call_groq_validated(
         client,
         call_type=GroqCallLog.CallType.BUDGET_GUARDIAN,
@@ -299,7 +338,10 @@ def budget_check(request):
 # 4. SHARED PREFERENCE MERGER
 # ─────────────────────────────────────────────
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def merge_check(request):
+
+    party = _get_required_owned_party(request)
    
     orders = request.data.get('orders', [])
 
@@ -310,7 +352,7 @@ def merge_check(request):
             "merges": [],
             "message": "Not enough orders to check for merges."
         })
-
+ 
     orders_summary = []
     for o in orders:
         items_str = ", ".join([f"{i.get('qty', 1)}x {i['name']} (₹{i['price']})" for i in o['items']])
@@ -318,7 +360,7 @@ def merge_check(request):
 
     prompt = merge_check_prompt(orders_summary)
 
-    party = _get_optional_party(request)
+    
     result, used_fallback, _log = call_groq_validated(
         client,
         call_type=GroqCallLog.CallType.MERGE_CHECK,
@@ -343,6 +385,7 @@ def merge_check(request):
 # 5. ORIGINAL PLAN PARTY (kept for compatibility)
 # ─────────────────────────────────────────────
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def plan_party(request):
     data = request.data
     guests = data.get('guests', [])
@@ -385,6 +428,7 @@ def plan_party(request):
 # 6. DINEOUT MOCK/GROQ-READY HELPERS
 # ─────────────────────────────────────────────
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def dineout_restaurants(request):
     
     guest_count = int(request.data.get('guest_count') or 1)
@@ -428,6 +472,7 @@ def dineout_restaurants(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def dineout_slots(request):
     provider = get_dineout_provider()
     result = provider.check_slots(
@@ -439,6 +484,7 @@ def dineout_slots(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def dineout_book(request):
     provider = get_dineout_provider()
     result = provider.book_table(
