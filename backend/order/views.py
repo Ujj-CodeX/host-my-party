@@ -11,35 +11,27 @@ from party.realtime import notify_party
 
 from .models import Booking, Order
 from .serializers import BookingSerializer, OrderCreateSerializer, OrderSerializer
-from .services import compute_fire_time, schedule_order_firing
 
 
 class OrderListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        party = get_owned_party(self.request, self.kwargs["party_code"])
-        return party.orders.all().order_by("-created_at")
-
-    def get_serializer_class(self):
-        return OrderSerializer if self.request.method == "GET" else OrderCreateSerializer
-
     def perform_create(self, serializer):
-        party = get_owned_party(self.request, self.kwargs["party_code"])
+        party = get_owned_party(
+            self.request,
+            self.kwargs["party_code"],
+        )
+
         serializer.save(party=party)
         order = serializer.instance
 
-        
-        fire_time = compute_fire_time(party, order.guest, order.restaurant_id)
-        if fire_time:
-            order.fire_time = fire_time
-            order.save(update_fields=["fire_time"])
-            schedule_order_firing(order)
-            notify_party(party.code, "order_created", OrderSerializer(order).data)
-        else:
-           
-            schedule_order_firing(order)
-
+        if order.fire_time:
+            notify_party(
+               party.code,
+            "order_created",
+            OrderSerializer(order).data,
+        ) 
+                
 
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -117,22 +109,21 @@ class GuestOrderCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         guest = self.request.auth
-        
+
         serializer.save(
             party=guest.party,
             guest=guest,
             placed_by=Order.PlacedBy.GUEST,
-            last_modified_by=Order.PlacedBy.GUEST,
+            last_modified_by = Order.PlacedBy.GUEST,
+            
         )
+
         order = serializer.instance
 
-        fire_time = compute_fire_time(guest.party, guest, order.restaurant_id)
-        if fire_time:
-            order.fire_time = fire_time
-            order.save(update_fields=["fire_time"])
-            schedule_order_firing(order)
-            notify_party(guest.party.code, "order_created", OrderSerializer(order).data)
-        else:
-            # Immediate path — schedule_order_firing fires it right away
-            # and sends its own notify_party call already.
-            schedule_order_firing(order)
+        if order.fire_time:
+            notify_party(
+                guest.party.code,
+                "order_created",
+                OrderSerializer(order).data,
+            )
+
