@@ -19,7 +19,7 @@ from party.authentication import GuestSessionAuthentication
 from party.models import Party
 
 from .dineout_provider import get_dineout_provider
-from .groq_utils import call_groq_validated
+from .groq_utils import call_groq_validated,GROQ_MODEL
 from .mock_swiggy import (
     RESTAURANTS,
     get_mock_restaurants,
@@ -202,20 +202,21 @@ def schedule_late_order(request):
         }
 
     # Store in cache (key: scheduled_orders list)
-    cache_key = f"scheduled_orders:{party.id}"
+    cache_key = f"scheduled_orders:{party.code}"
     scheduled = cache.get(cache_key, [])
     order_entry = {
-        "guest_name": guest_name,
-        "pref": pref,
-        "restaurant_id": restaurant_id,
-        "restaurant_name": rest_name,
-        "items": items,
-        "late_minutes": late_minutes,
-        "party_time": party_time_str,
-        "fire_at": schedule_data.get("fire_at"),
-        "reasoning": schedule_data.get("reasoning"),
-        "status": "scheduled"
+     "guest_name": guest_name,
+     "pref": pref,
+     "restaurant_id": restaurant_id,
+     "restaurant_name": rest_name,
+     "items": items,
+     "late_minutes": late_minutes,
+     "party_time": party_time_str,
+     "fire_at": schedule_data.get("fire_at"),
+     "reasoning": schedule_data.get("reasoning"),
+     "status": "scheduled",
     }
+
     scheduled.append(order_entry)
     cache.set(cache_key, scheduled, timeout=3600)
 
@@ -237,7 +238,7 @@ def get_scheduled_orders(request):
 
     party = _get_required_owned_party(request)
 
-    cache_key = f"scheduled_orders:{party.id}"
+    cache_key = f"scheduled_orders:{party.code}"
     scheduled = cache.get(cache_key, [])
 
     return Response({
@@ -396,7 +397,7 @@ def plan_party(request):
     )
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1000
     )

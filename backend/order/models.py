@@ -18,11 +18,18 @@ class Order(models.Model):
         GUEST = "guest", "Guest"
 
     class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        SCHEDULED = "scheduled", "Scheduled"   # late-arrival: waiting for Celery fire_time
-        FIRED = "fired", "Fired"               # sent to Swiggy provider
-        DELIVERED = "delivered", "Delivered"
-        CANCELLED = "cancelled", "Cancelled"
+       DRAFT = "draft", "Draft"
+       READY_FOR_CHECKOUT = "ready_for_checkout", "Ready for Checkout"
+       HANDOFF_STARTED = "handoff_started", "Handoff Started"
+       PENDING_PAYMENT = "pending_payment", "Pending_Payment"
+       PLACED = "placed", "Placed"
+       FAILED = "failed", "Failed"
+       CANCELLED = "cancelled", "Cancelled"
+
+       PENDING = "pending", "Pending"
+       SCHEDULED = "scheduled", "Legacy Scheduled"
+       FIRED = "fired", "Legacy Fired"
+       DELIVERED = "delivered", "Legacy Delivered"
     
 
     party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="orders")
@@ -31,22 +38,32 @@ class Order(models.Model):
     placed_by = models.CharField(max_length=10, choices=PlacedBy.choices)
     last_modified_by = models.CharField(max_length=10, choices=PlacedBy.choices)
 
-    # External (mock today, real Swiggy tomorrow) restaurant reference —
-    # intentionally a plain string, not a FK, since this app doesn't own
-    # the restaurant catalog.
+    
 
     restaurant_id = models.CharField(max_length=100)
     restaurant_name = models.CharField(max_length=100)
+
+    external_order_id = models.CharField(
+        max_length=255, null=True, blank=True
+    )
+    external_cart_id = models.CharField(
+        max_length=255, null=True, blank=True
+    )
+    provider = models.CharField(
+        max_length=50, default="swiggy"
+    )
+    provider_session_reference = models.CharField(
+        max_length=255, null=True, blank=True
+    )
 
     item_total = models.PositiveIntegerField(default=0)
     delivery_fee = models.PositiveIntegerField(default=0)
     taxes = models.PositiveIntegerField(default=0)
 
 
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
-
-    # Late-arrival scheduling (Section 5.3.6):
-    # fire_time = party_start_time + guest_late_offset - restaurant_avg_prep_time
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING)
+    
+    
     fire_time = models.DateTimeField(null=True, blank=True)
     payment_method = models.CharField(
         max_length=10, choices=Guest.PaymentMethod.choices, null=True, blank=True
@@ -122,3 +139,21 @@ class Booking(models.Model):
  
     def __str__(self):
         return f"Booking @ {self.restaurant_name} for party {self.party.code}"
+
+class HandoffToken(models.Model):
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="handoff_tokens",
+    )
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField(
+        null= True,
+        blank= True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"HandoffToken for order #{self.order_id}"
+

@@ -11,7 +11,7 @@ from core.models import GroqCallLog
 from .prompt_templates import PROMPT_VERSIONS
 from .schema_validation import parse_and_validate
 
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
 PROMPT_TEMPLATE_VERSION = "v1" 
 
 

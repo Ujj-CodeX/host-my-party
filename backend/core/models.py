@@ -51,6 +51,32 @@ class GroqCallLog(models.Model):
         status = "OK" if self.success else "FAILED"
         return f"[{status}] {self.call_type} @ {self.created_at:%Y-%m-%d %H:%M}"
 
+class MCPCallLog(models.Model):
+    tool_name = models.CharField(max_length=100)
+
+    party = models.ForeignKey(
+        Party,
+        on_delete=models.CASCADE,
+        related_name="mcp_calls",
+        null=True,
+        blank = True,
+    )
+
+    session_id = models.CharField(max_length=255, blank=True,default="", )
+    duration_ms = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=30)
+
+    error_code = models.CharField(max_length=100,blank=True,default="",)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.tool_name} — {self.status}"
+
+
+
+
+
 
 class Notification(models.Model):
     class RecipientType(models.TextChoices):

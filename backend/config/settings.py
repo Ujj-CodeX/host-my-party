@@ -172,6 +172,18 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 
 
+# Django cache — shared across backend workers, backed by Redis.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.getenv(
+            "REDIS_CACHE_URL",
+            os.getenv("REDIS_URL", "redis://127.0.0.1:6379/1"),
+        ),
+        "KEY_PREFIX": "partynosh",
+    }
+}
+
 # Internationalization
 LANGUAGE_CODE = 'en-us'
 
