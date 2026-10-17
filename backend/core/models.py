@@ -60,7 +60,7 @@ class MCPCallLog(models.Model):
         related_name="mcp_calls",
         null=True,
         blank = True,
-    )
+    )    
 
     session_id = models.CharField(max_length=255, blank=True,default="", )
     duration_ms = models.PositiveIntegerField(null=True, blank=True)
@@ -127,3 +127,5 @@ class Notification(models.Model):
     def __str__(self):
         who = self.recipient_user or self.recipient_guest
         return f"{self.notification_type} → {who} ({'read' if self.is_read else 'unread'})"
+    
+
