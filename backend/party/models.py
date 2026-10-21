@@ -59,6 +59,7 @@ class Party(models.Model):
 
     # Location (Food Delivery distance-sorting;)
     delivery_address = models.CharField(max_length=255, blank=True)
+    swiggy_address_id = models.CharField(max_length=255,null=True,blank=True,)
     delivery_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     delivery_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
  

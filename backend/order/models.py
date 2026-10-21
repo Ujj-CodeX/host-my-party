@@ -35,12 +35,23 @@ class Order(models.Model):
     placed_by = models.CharField(max_length=10, choices=PlacedBy.choices)
     last_modified_by = models.CharField(max_length=10, choices=PlacedBy.choices)
 
-    # External (mock today, real Swiggy tomorrow) restaurant reference —
-    # intentionally a plain string, not a FK, since this app doesn't own
-    # the restaurant catalog.
+    
 
     restaurant_id = models.CharField(max_length=100)
     restaurant_name = models.CharField(max_length=100)
+
+    external_order_id = models.CharField(
+        max_length=255, null=True, blank=True
+    )
+    external_cart_id = models.CharField(
+        max_length=255, null=True, blank=True
+    )
+    provider = models.CharField(
+        max_length=50, default="swiggy"
+    )
+    provider_session_reference = models.CharField(
+        max_length=255, null=True, blank=True
+    )
 
     item_total = models.PositiveIntegerField(default=0)
     delivery_fee = models.PositiveIntegerField(default=0)
@@ -126,3 +137,21 @@ class Booking(models.Model):
  
     def __str__(self):
         return f"Booking @ {self.restaurant_name} for party {self.party.code}"
+
+class HandoffToken(models.Model):
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="handoff_tokens",
+    )
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField(
+        null= True,
+        blank= True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"HandoffToken for order #{self.order_id}"
+

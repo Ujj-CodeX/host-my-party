@@ -170,7 +170,7 @@ class SwiggyUserCredential(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="swiggy_credential"
            
     )
-    client_id = models.CharField(max_length=255, unique=True)
+    client_id = models.CharField(max_length=255)
     access_token_ciphertext = models.TextField()
     token_type = models.CharField(max_length=20, default="Bearer")
     scope = models.CharField(max_length=255, blank=True)
@@ -194,7 +194,7 @@ class SwiggyOAuthAttempt(models.Model):
     )
     client_id = models.CharField(max_length=255)
     state_hash = models.CharField(max_length=64, unique=True)
-    code_verifier_hash = models.TextField()
+    code_verifier_ciphertext = models.TextField(default="", blank=True)
     redirect_uri = models.URLField(max_length=255)
     expires_at = models.DateTimeField()
     consumed_at = models.DateTimeField(blank=True, null=True)

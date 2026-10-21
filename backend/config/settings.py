@@ -1,25 +1,33 @@
-"""
-Django settings for config project.
-"""
-from dotenv import load_dotenv
 import os
-load_dotenv()
+from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
 from dotenv import load_dotenv
-from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-f)hmm7n!2bzbqin)o8ye-w7jdgk2e*-st)35$-507#_5izqr-u'
+# Django security configuration
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "").strip()
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+if not SECRET_KEY:
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY must be configured in the environment."
+    )
 
-ALLOWED_HOSTS = ['*']
+DEBUG = os.getenv(
+    "DJANGO_DEBUG", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv(
+        "DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1"
+    ).split(",")
+    if host.strip()
+]
 
 # Our custom User (accounts app) replaces Django's built-in one entirely —
 # must be set before any migrations touching auth-related tables run.
@@ -109,8 +117,14 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # VueJS default port
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:5173",
+    ).split(",")
+    if origin.strip()
 ]
+
 CORS_ALLOW_CREDENTIALS = True
 
 # DRF — every view authenticates via JWT unless it explicitly overrides
@@ -157,6 +171,18 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 
+
+# Django cache — shared across backend workers, backed by Redis.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.getenv(
+            "REDIS_CACHE_URL",
+            os.getenv("REDIS_URL", "redis://127.0.0.1:6379/1"),
+        ),
+        "KEY_PREFIX": "partynosh",
+    }
+}
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'

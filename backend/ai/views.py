@@ -25,7 +25,7 @@ from party.models import Party
 from rest_framework import status
 
 from .dineout_provider import get_dineout_provider
-from .groq_utils import call_groq_validated
+from .groq_utils import call_groq_validated,GROQ_MODEL
 from .mock_swiggy import (
     RESTAURANTS,
     get_mock_restaurants,
@@ -39,15 +39,36 @@ from .prompt_templates import (
     scheduling_prompt,
 )
 
+from rest_framework.exceptions import NotFound , PermissionDenied, ValidationError
+from rest_framework.permissions import IsAuthenticated
+
 client = Groq(api_key=settings.GROQ_API_KEY)
 
 
-def _get_optional_party(request):
-    
-    party_id = request.data.get('party_id') if hasattr(request, 'data') else None
+def _get_required_owned_party(request):
+    """Require a party and verify that the authenticated user hosts it."""
+
+    if request.method in ("GET", "HEAD"):
+        party_id = request.query_params.get("party_id")
+    else:
+        party_id = request.data.get("party_id")
+
     if not party_id:
-        return None
-    return Party.objects.filter(id=party_id).first()
+        raise ValidationError({
+            "party_id": "This field is required."
+        })
+
+    try:
+        party = Party.objects.get(pk=party_id)
+    except (Party.DoesNotExist, ValueError, TypeError):
+        raise NotFound("Party not found.")
+
+    if party.host_id != request.user.id:
+        raise PermissionDenied(
+            "You do not have permission to access this party."
+        )
+
+    return party
 
 
 def _get_required_owned_party(request):
@@ -171,7 +192,9 @@ def guest_get_restaurants(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def schedule_late_order(request):
+
     party = _get_required_owned_party(request)
+    
     guest_name = request.data.get('guest_name')
     pref = request.data.get('pref', 'Any')
     late_minutes = int(request.data.get('late_minutes', 30))
@@ -214,17 +237,18 @@ def schedule_late_order(request):
     cache_key = f"scheduled_orders:{party.code}"
     scheduled = cache.get(cache_key, [])
     order_entry = {
-        "guest_name": guest_name,
-        "pref": pref,
-        "restaurant_id": restaurant_id,
-        "restaurant_name": rest_name,
-        "items": items,
-        "late_minutes": late_minutes,
-        "party_time": party_time_str,
-        "fire_at": schedule_data.get("fire_at"),
-        "reasoning": schedule_data.get("reasoning"),
-        "status": "scheduled"
+     "guest_name": guest_name,
+     "pref": pref,
+     "restaurant_id": restaurant_id,
+     "restaurant_name": rest_name,
+     "items": items,
+     "late_minutes": late_minutes,
+     "party_time": party_time_str,
+     "fire_at": schedule_data.get("fire_at"),
+     "reasoning": schedule_data.get("reasoning"),
+     "status": "scheduled",
     }
+
     scheduled.append(order_entry)
     cache.set(cache_key, scheduled, timeout=3600)
 
@@ -592,7 +616,7 @@ def plan_party(request):
     )
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1000
     )

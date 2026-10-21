@@ -2,12 +2,13 @@
 orders app — DRF serializers.
 """
 
+from attr import attrs
 from django.db import transaction
 from rest_framework import serializers
 
 from .models import Booking, Order, OrderItem
 from .services import compute_fire_time, schedule_order_firing
-
+from ai.food_delivery_provider import get_food_delivery_provider
 
 class OrderItemSerializer(serializers.ModelSerializer):
     line_total = serializers.IntegerField(read_only=True)
@@ -74,18 +75,10 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 class OrderItemWriteSerializer(serializers.Serializer):
-    """Plain (non-Model) serializer for the nested items[] payload on
-    create — kept separate from OrderItemSerializer since that one is
-    read-only and includes server-computed fields like line_total."""
-
+    
     external_item_id = serializers.CharField(max_length=100)
-    name = serializers.CharField(max_length=150)
-    unit_price = serializers.IntegerField(min_value=0)
     quantity = serializers.IntegerField(min_value=1, default=1)
-    is_veg = serializers.BooleanField(default=False)
-    is_jain_compatible = serializers.BooleanField(default=False)
-    is_diabetic_friendly = serializers.BooleanField(default=False)
-
+    
 
 class OrderCreateSerializer(serializers.ModelSerializer):
     """
@@ -108,23 +101,86 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            "id",
-            "party",
-            "guest",
-            "placed_by",
-            "restaurant_id",
-            "restaurant_name",
-            "delivery_fee",
-            "taxes",
-            "payment_method",
-            "items",
-        ]
-        read_only_fields = ["id" , "party" ]
+        "id",
+        "party",
+        "guest",
+        "placed_by",
+        "restaurant_id",
+        "restaurant_name",
+        "payment_method",
+        "items",
+    ]
+        read_only_fields = ["id" , "party", "restaurant_name"] 
 
-    def validate_items(self, items):
-        if not items:
-            raise serializers.ValidationError("An order needs at least one item.")
-        return items
+    def validate(self, attrs):
+        provider = get_food_delivery_provider()
+
+        restaurant_id = attrs.get(
+           "restaurant_id",
+            getattr(self.instance, "restaurant_id", None),
+        )
+
+        if not restaurant_id:
+            raise serializers.ValidationError({
+            "restaurant_id": "A restaurant must be selected."
+        })
+
+        restaurants = provider.get_restaurants()
+
+        restaurant = next(
+          (
+            r for r in restaurants
+            if r["id"] == restaurant_id
+         ),
+        None,
+    )
+
+        if restaurant is None:
+            raise serializers.ValidationError({
+            "restaurant_id": "Unknown restaurant ID."
+        })
+
+    # Restaurant name is authoritative catalog data.
+        attrs["restaurant_name"] = restaurant["name"]
+
+        if "items" in attrs:
+            menu_by_id = {
+            item["id"]: item
+            for item in restaurant.get("menu", [])
+        }
+
+        resolved_items = []
+
+        for requested in attrs["items"]:
+            external_item_id = requested["external_item_id"]
+            catalog_item = menu_by_id.get(external_item_id)
+
+            if catalog_item is None:
+                raise serializers.ValidationError({
+                    "items": (
+                        f"Item '{external_item_id}' was not "
+                        f"found in {restaurant['name']}'s menu."
+                    )
+                })
+
+            resolved_items.append({
+                "external_item_id": external_item_id,
+                "name": catalog_item["name"],
+                "unit_price": catalog_item["price"],
+                "quantity": requested["quantity"],
+                "is_veg": catalog_item["isVeg"],
+                "is_jain_compatible": (
+                    catalog_item["isJainCompatible"]
+                ),
+                "is_diabetic_friendly": (
+                    catalog_item["isDiabeticFriendly"]
+                ),
+            })
+
+            attrs["items"] = resolved_items
+
+        return attrs
+
 
     def create(self, validated_data):
         items_data = validated_data.pop("items")
@@ -201,4 +257,4 @@ class BookingSerializer(serializers.ModelSerializer):
         ]
         # status transitions (requested -> confirmed) are driven by the
         # Swiggy Dineout partner callback / service layer, not raw client PATCH.
-        read_only_fields = ["id", "party", "status", "created_at", "updated_at"]
+        read_only_fields = ["id", "party", "status", "created_at", "updated_at"] 
