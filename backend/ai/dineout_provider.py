@@ -34,8 +34,8 @@ class DineoutProvider(ABC):
     
 
     @abstractmethod
-    def search_restaurants(self, guest_count, needs_veg=False, needs_jain=False,
-                            max_distance_km=10.0):
+    def search_restaurants(self,address_id,guest_count,needs_veg=False,needs_jain=False,max_distance_km=10.0,):
+
         """Returns a list of restaurants that can seat guest_count people,
         filtered by dietary needs. Mirrors `swiggy dineout search`."""
 
@@ -55,12 +55,16 @@ class DineoutProvider(ABC):
 
 class MockDineoutProvider(DineoutProvider):
     
-    def search_restaurants(self, guest_count, needs_veg=False, needs_jain=False,
-                            max_distance_km=10.0):
+    def search_restaurants(self,address_id,guest_count,needs_veg=False,needs_jain=False,max_distance_km=10.0):
+
+        if not address_id:
+           raise ValueError("address_id is required.")
+
         return get_dineout_restaurants(
-            guest_count, needs_veg=needs_veg, needs_jain=needs_jain,
-            max_distance_km=max_distance_km,
-        )
+          guest_count,
+          needs_veg=needs_veg,
+          needs_jain=needs_jain,
+          max_distance_km=max_distance_km,)
 
     def get_details(self, restaurant_id):
         return get_restaurant_details(restaurant_id)

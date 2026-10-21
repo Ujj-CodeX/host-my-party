@@ -18,11 +18,15 @@ class Order(models.Model):
         GUEST = "guest", "Guest"
 
     class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        SCHEDULED = "scheduled", "Scheduled"   # late-arrival: waiting for Celery fire_time
-        FIRED = "fired", "Fired"               # sent to Swiggy provider
-        DELIVERED = "delivered", "Delivered"
-        CANCELLED = "cancelled", "Cancelled"
+       PENDING = "pending", "Pending"
+       SCHEDULED = "scheduled", "Scheduled"
+       READY_FOR_HOST_ACTION = (
+        "ready_for_host_action",
+        "Ready for Host Action",
+       )
+       FIRED = "fired", "Fired"
+       DELIVERED = "delivered", "Delivered"
+       CANCELLED = "cancelled", "Cancelled"
     
 
     party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="orders")
@@ -43,7 +47,7 @@ class Order(models.Model):
     taxes = models.PositiveIntegerField(default=0)
 
 
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING)
 
     # Late-arrival scheduling (Section 5.3.6):
     # fire_time = party_start_time + guest_late_offset - restaurant_avg_prep_time
