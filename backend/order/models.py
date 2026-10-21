@@ -18,18 +18,15 @@ class Order(models.Model):
         GUEST = "guest", "Guest"
 
     class Status(models.TextChoices):
-       DRAFT = "draft", "Draft"
-       READY_FOR_CHECKOUT = "ready_for_checkout", "Ready for Checkout"
-       HANDOFF_STARTED = "handoff_started", "Handoff Started"
-       PENDING_PAYMENT = "pending_payment", "Pending_Payment"
-       PLACED = "placed", "Placed"
-       FAILED = "failed", "Failed"
-       CANCELLED = "cancelled", "Cancelled"
-
        PENDING = "pending", "Pending"
-       SCHEDULED = "scheduled", "Legacy Scheduled"
-       FIRED = "fired", "Legacy Fired"
-       DELIVERED = "delivered", "Legacy Delivered"
+       SCHEDULED = "scheduled", "Scheduled"
+       READY_FOR_HOST_ACTION = (
+        "ready_for_host_action",
+        "Ready for Host Action",
+       )
+       FIRED = "fired", "Fired"
+       DELIVERED = "delivered", "Delivered"
+       CANCELLED = "cancelled", "Cancelled"
     
 
     party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="orders")
@@ -62,8 +59,9 @@ class Order(models.Model):
 
 
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING)
-    
-    
+
+    # Late-arrival scheduling (Section 5.3.6):
+    # fire_time = party_start_time + guest_late_offset - restaurant_avg_prep_time
     fire_time = models.DateTimeField(null=True, blank=True)
     payment_method = models.CharField(
         max_length=10, choices=Guest.PaymentMethod.choices, null=True, blank=True
